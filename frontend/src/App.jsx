@@ -1,18 +1,16 @@
 import React, { useState } from 'react'
-import SearchPage from './pages/SearchPage'
-import PhotosPage from './pages/PhotosPage'
+import ChatPage from './pages/ChatPage'
 import IngestPage from './pages/IngestPage'
 
 const NAV = [
-  { id: 'search', label: '🔍 고증 검색' },
-  { id: 'photos', label: '📸 사진 자료' },
-  { id: 'ingest', label: '📥 자료 수집' },
+  { id: 'chat', label: '고증 채팅' },
+  { id: 'ingest', label: '자료 입력' },
 ]
 
-const styles = {
-  wrap: { minHeight: '100vh', background: '#0f0e0c' },
+const S = {
+  wrap: { minHeight: '100vh', background: '#0f0e0c', display: 'flex', flexDirection: 'column' },
   header: {
-    borderBottom: '1px solid #2a2820',
+    borderBottom: '1px solid #1e1d19',
     padding: '0 2rem',
     display: 'flex',
     alignItems: 'center',
@@ -21,51 +19,53 @@ const styles = {
     position: 'sticky',
     top: 0,
     zIndex: 10,
+    flexShrink: 0,
   },
   logo: {
-    fontSize: '1rem',
+    fontSize: '0.9rem',
     fontWeight: '600',
     color: '#c9a96e',
-    letterSpacing: '0.05em',
-    padding: '1.2rem 0',
+    letterSpacing: '0.08em',
+    padding: '1.1rem 0',
     whiteSpace: 'nowrap',
   },
   nav: { display: 'flex', gap: '0', marginLeft: 'auto' },
-  navBtn: (active) => ({
+  navBtn: active => ({
     background: 'none',
     border: 'none',
     color: active ? '#c9a96e' : '#6b6456',
     cursor: 'pointer',
-    padding: '1.2rem 1rem',
-    fontSize: '0.875rem',
+    padding: '1.1rem 0.875rem',
+    fontSize: '0.82rem',
     fontWeight: active ? '600' : '400',
     borderBottom: active ? '2px solid #c9a96e' : '2px solid transparent',
     transition: 'color 0.15s',
     whiteSpace: 'nowrap',
   }),
-  main: { maxWidth: '1100px', margin: '0 auto', padding: '2rem' },
+  main: { maxWidth: '820px', margin: '0 auto', padding: '0 2rem', width: '100%', flex: 1 },
+  mainIngest: { maxWidth: '820px', margin: '0 auto', padding: '2rem', width: '100%', flex: 1 },
 }
 
 export default function App() {
-  const [tab, setTab] = useState('search')
+  const [tab, setTab] = useState('chat')
 
   return (
-    <div style={styles.wrap}>
-      <header style={styles.header}>
-        <span style={styles.logo}>근현대사 고증 AI</span>
-        <nav style={styles.nav}>
+    <div style={S.wrap}>
+      <header style={S.header}>
+        <span style={S.logo}>근현대사 고증 AI</span>
+        <nav style={S.nav}>
           {NAV.map(n => (
-            <button key={n.id} style={styles.navBtn(tab === n.id)} onClick={() => setTab(n.id)}>
+            <button key={n.id} style={S.navBtn(tab === n.id)} onClick={() => setTab(n.id)}>
               {n.label}
             </button>
           ))}
         </nav>
       </header>
-      <main style={styles.main}>
-        {tab === 'search' && <SearchPage />}
-        {tab === 'photos' && <PhotosPage />}
+
+      <div style={tab === 'chat' ? S.main : S.mainIngest}>
+        {tab === 'chat' && <ChatPage />}
         {tab === 'ingest' && <IngestPage />}
-      </main>
+      </div>
     </div>
   )
 }
