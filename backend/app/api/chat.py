@@ -19,6 +19,8 @@ class Message(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[Message]
     top_k: int = 15
+    include_photos: bool = True
+    include_news: bool = True
 
 
 @router.post("")
@@ -32,11 +34,11 @@ async def chat(req: ChatRequest):
 
     history = [{"role": m.role, "content": m.content} for m in req.messages[:-1]]
 
-    rag_task = rag_chat(user_msg, history, req.top_k)
-    photo_task = _fetch_photos(user_msg)
+    rag_task = rag_chat(user_msg, history, req.top_k, include_news=req.include_news)
+    photo_task = _fetch_photos(user_msg) if req.include_photos else asyncio.sleep(0, result=[])
 
     result, photos = await asyncio.gather(rag_task, photo_task, return_exceptions=False)
-    result["photos"] = photos
+    result["photos"] = photos if isinstance(photos, list) else []
     return result
 
 
@@ -105,10 +107,17 @@ async def _fetch_photos(query: str) -> list[dict]:
                     seen.add(pid)
                     photos.append(p)
 
-        add(seoul_photos if not isinstance(seoul_photos, Exception) else [])
+        _seoul = seoul_photos if not isinstance(seoul_photos, Exception) else []
+        _gongu = _parse_gongu(gongu_data)
+        _wiki = wiki_photos if not isinstance(wiki_photos, Exception) else []
+        print(f"[photo] seoul={len(_seoul)} gongu={len(_gongu)} wiki={len(_wiki)}"
+              + (f" seoul_err={seoul_photos}" if isinstance(seoul_photos, Exception) else "")
+              + (f" gongu_err={gongu_data}" if isinstance(gongu_data, Exception) else ""))
+
+        add(_seoul)
         add(emuseum_photos if not isinstance(emuseum_photos, Exception) else [])
-        add(_parse_gongu(gongu_data))
-        add(wiki_photos if not isinstance(wiki_photos, Exception) else [])
+        add(_gongu)
+        add(_wiki)
 
         # 서울아카이브 사진 설명 텍스트 → ChromaDB 자동 적재
         if not isinstance(seoul_photos, Exception):
@@ -136,9 +145,13 @@ async def _fetch_photos(query: str) -> list[dict]:
                 fetch_wikimedia_photos(fallback, limit=8),
                 return_exceptions=True,
             )
-            add(fb_seoul if not isinstance(fb_seoul, Exception) else [])
-            add(_parse_gongu(fb_gongu))
-            add(fb_wiki if not isinstance(fb_wiki, Exception) else [])
+            _fb_seoul = fb_seoul if not isinstance(fb_seoul, Exception) else []
+            _fb_gongu = _parse_gongu(fb_gongu)
+            _fb_wiki = fb_wiki if not isinstance(fb_wiki, Exception) else []
+            print(f"[photo fallback] seoul={len(_fb_seoul)} gongu={len(_fb_gongu)} wiki={len(_fb_wiki)}")
+            add(_fb_seoul)
+            add(_fb_gongu)
+            add(_fb_wiki)
 
         return photos[:20]
 

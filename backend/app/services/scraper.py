@@ -334,10 +334,15 @@ async def scrape_seoul_history_photos(keyword: str, limit: int = 12) -> list[dic
     headers = {"User-Agent": "Mozilla/5.0 (compatible; HistoryResearchBot/1.0)"}
 
     ctgry_id = _SEOUL_DEFAULT_CATEGORY
+    matched_kw = ""
     for kw, cid in _SEOUL_CATEGORY_MAP.items():
         if kw in keyword:
             ctgry_id = cid
+            matched_kw = kw
             break
+
+    # searchVal: 매핑된 키워드 사용 (전체 질문 대신), 없으면 빈 문자열로 카테고리 전체 탐색
+    search_val = matched_kw if matched_kw else keyword
 
     # 1단계: 목록에서 file_id 수집
     file_ids = []
@@ -352,7 +357,7 @@ async def scrape_seoul_history_photos(keyword: str, limit: int = 12) -> list[dic
                         "ctgryId": ctgry_id,
                         "subCtgryId": "",
                         "upperNodeId": ctgry_id,
-                        "searchVal": keyword,
+                        "searchVal": search_val,
                         "sortOrder": "",
                     },
                 )
@@ -938,10 +943,53 @@ _NL_SEARCH_URL = "https://www.nl.go.kr/NL/search/openApi/search.do"
 _NL_NEWSPAPER_DETAIL = "https://www.nl.go.kr/newspaper/detail.do"
 
 
+_NL_BASE = "https://www.nl.go.kr"
+
+
 def _xml_text(el, tag: str) -> str:
-    """ElementTree 요소에서 태그 텍스트 안전 추출"""
     child = el.find(tag)
     return (child.text or "").strip() if child is not None else ""
+
+
+def _nl_parse_item(item) -> dict:
+    """국중도 API XML <item> 요소 → 공통 필드 딕셔너리"""
+    title      = _xml_text(item, "title_info")
+    control_no = _xml_text(item, "control_no")
+    date_str   = _xml_text(item, "pub_year_info")
+    publisher  = _xml_text(item, "pub_info")
+    link_str   = _xml_text(item, "detail_link")
+
+    year_m = re.search(r"(\d{4})", date_str)
+    year = year_m.group(1) if year_m else ""
+
+    # URL 조합: 상대경로면 앞에 도메인 붙이기
+    if link_str:
+        url = link_str if link_str.startswith("http") else f"{_NL_BASE}{link_str}"
+    elif control_no:
+        url = f"{_NL_NEWSPAPER_DETAIL}?id={control_no}"
+    else:
+        url = _NL_SEARCH_URL
+
+    # 중복 제거 키
+    if link_str:
+        doc_key = re.sub(r"[^A-Za-z0-9_-]", "_", link_str)[-60:]
+    elif control_no:
+        doc_key = control_no
+    else:
+        doc_key = hashlib.md5(f"{title}{date_str}".encode()).hexdigest()[:12]
+
+    text_parts = [p for p in [publisher, f"({date_str})" if date_str else "", title] if p]
+
+    return {
+        "title": title,
+        "control_no": control_no,
+        "date_str": date_str,
+        "publisher": publisher,
+        "year": year,
+        "url": url,
+        "doc_key": doc_key,
+        "text": " ".join(text_parts),
+    }
 
 
 async def crawl_nl_newspaper(
@@ -999,58 +1047,24 @@ async def crawl_nl_newspaper(
                 if max_docs > 0 and len(documents) >= max_docs:
                     break
 
-                title = _xml_text(item, "title")
-                if not title:
+                p = _nl_parse_item(item)
+                if not p["title"] or p["doc_key"] in seen:
                     continue
-
-                control_no = _xml_text(item, "controlNo")
-                date_str   = _xml_text(item, "pubDate")
-                publisher  = _xml_text(item, "publisher")
-                link_str   = _xml_text(item, "link")
-
-                # 연도 추출
-                year_m = re.search(r"(\d{4})", date_str)
-                year = year_m.group(1) if year_m else ""
-
-                # 원문 링크: link 필드에 newspaper/detail.do 포함 시 우선 사용
-                if "newspaper/detail.do" in link_str:
-                    url = link_str
-                    # id 파라미터 추출
-                    id_m = re.search(r"[?&]id=([^&]+)", link_str)
-                    doc_key = id_m.group(1) if id_m else control_no
-                elif control_no:
-                    url = f"{_NL_NEWSPAPER_DETAIL}?id={control_no}"
-                    doc_key = control_no
-                else:
-                    doc_key = hashlib.md5(f"{title}{date_str}".encode()).hexdigest()[:12]
-                    url = _NL_SEARCH_URL
-
-                if doc_key in seen:
-                    continue
-                seen.add(doc_key)
-
-                # RAG text: 신문명 + 날짜 + 제목 요약
-                text_parts = []
-                if publisher:
-                    text_parts.append(publisher)
-                if date_str:
-                    text_parts.append(f"({date_str})")
-                text_parts.append(title)
-                text = " ".join(text_parts)
+                seen.add(p["doc_key"])
 
                 documents.append({
-                    "id": f"nl_newspaper_{doc_key}",
-                    "title": title,
-                    "text": text,
-                    "source": publisher or "국립중앙도서관 신문",
-                    "year": year,
-                    "url": url,
+                    "id": f"nl_newspaper_{p['doc_key']}",
+                    "title": p["title"],
+                    "text": p["text"],
+                    "source": p["publisher"] or "국립중앙도서관 신문",
+                    "year": p["year"],
+                    "url": p["url"],
                     "image_url": "",
                     "category": "신문",
                     "meta": {
-                        "publisher": publisher,
-                        "date": date_str,
-                        "controlNo": control_no,
+                        "publisher": p["publisher"],
+                        "date": p["date_str"],
+                        "controlNo": p["control_no"],
                     },
                 })
 
@@ -1157,53 +1171,24 @@ async def crawl_nl_newspaper_bulk(
                     break
 
                 for item in items:
-                    title = _xml_text(item, "title")
-                    if not title:
+                    p = _nl_parse_item(item)
+                    if not p["title"] or p["doc_key"] in seen:
                         continue
-
-                    control_no = _xml_text(item, "controlNo")
-                    date_str   = _xml_text(item, "pubDate")
-                    publisher  = _xml_text(item, "publisher")
-                    link_str   = _xml_text(item, "link")
-
-                    year_m = re.search(r"(\d{4})", date_str)
-                    year = year_m.group(1) if year_m else ""
-
-                    if "newspaper/detail.do" in link_str:
-                        url = link_str
-                        id_m = re.search(r"[?&]id=([^&]+)", link_str)
-                        doc_key = id_m.group(1) if id_m else control_no
-                    elif control_no:
-                        url = f"{_NL_NEWSPAPER_DETAIL}?id={control_no}"
-                        doc_key = control_no
-                    else:
-                        doc_key = hashlib.md5(f"{title}{date_str}".encode()).hexdigest()[:12]
-                        url = _NL_SEARCH_URL
-
-                    if doc_key in seen:
-                        continue
-                    seen.add(doc_key)
-
-                    text_parts = []
-                    if publisher:
-                        text_parts.append(publisher)
-                    if date_str:
-                        text_parts.append(f"({date_str})")
-                    text_parts.append(title)
+                    seen.add(p["doc_key"])
 
                     documents.append({
-                        "id": f"nl_newspaper_{doc_key}",
-                        "title": title,
-                        "text": " ".join(text_parts),
-                        "source": publisher or paper,
-                        "year": year,
-                        "url": url,
+                        "id": f"nl_newspaper_{p['doc_key']}",
+                        "title": p["title"],
+                        "text": p["text"],
+                        "source": p["publisher"] or paper,
+                        "year": p["year"],
+                        "url": p["url"],
                         "image_url": "",
                         "category": "신문",
                         "meta": {
-                            "publisher": publisher or paper,
-                            "date": date_str,
-                            "controlNo": control_no,
+                            "publisher": p["publisher"] or paper,
+                            "date": p["date_str"],
+                            "controlNo": p["control_no"],
                         },
                     })
                     paper_docs += 1

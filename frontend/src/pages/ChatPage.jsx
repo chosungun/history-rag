@@ -222,41 +222,87 @@ function PhotoGrid({ photos }) {
   )
 }
 
-/* ─── 출처 섹션 ─── */
-function Sources({ sources }) {
+/* ─── 출처 탭 패널 ─── */
+function SourcesPanel({ sources, sourcesNews }) {
+  const hasSrc = sources?.length > 0
+  const hasNews = sourcesNews?.length > 0
   const [open, setOpen] = useState(false)
-  if (!sources || sources.length === 0) return null
+  const [tab, setTab] = useState(hasSrc ? '사료' : '신문')
+  if (!hasSrc && !hasNews) return null
+
+  const tabs = [
+    hasSrc && { key: '사료', count: sources.length },
+    hasNews && { key: '신문', count: sourcesNews.length },
+  ].filter(Boolean)
+  const activeTab = tabs.some(t => t.key === tab) ? tab : tabs[0]?.key
 
   return (
     <div style={{ marginTop: 16, paddingTop: 13, borderTop: '1px solid #F2E6E3' }}>
-      <div
-        onClick={() => setOpen(v => !v)}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
-      >
+      <div onClick={() => setOpen(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
         <span style={{ fontSize: 12, color: '#9a8b8e', fontWeight: 600 }}>
-          참고 사료 {sources.length}건
+          참고 자료 {(sources?.length || 0) + (sourcesNews?.length || 0)}건
         </span>
         <span style={{ fontSize: 11, color: '#C2B4B7' }}>{open ? '▴' : '▾'}</span>
       </div>
 
       {open && (
-        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {sources.map((s, i) => (
-            <div key={i} style={{
-              background: '#FFF8FA', border: '1px solid #F4DCE8',
-              borderRadius: 8, padding: '8px 12px', fontSize: '0.77rem',
-            }}>
-              <span style={{ color: '#C16A82', fontWeight: 600 }}>{s.title}</span>
-              {s.year && <span style={{ color: '#B6A8AB' }}> ({s.year})</span>}
-              <div style={{ color: '#9a8b8e', marginTop: 4, lineHeight: 1.5 }}>{s.excerpt}</div>
-              {s.url && (
-                <a href={s.url} target="_blank" rel="noreferrer"
-                  style={{ color: '#a060c8', fontSize: '0.72rem', display: 'block', marginTop: 4 }}>
-                  원문 보기 →
-                </a>
-              )}
+        <div style={{ marginTop: 8 }}>
+          {tabs.length > 1 && (
+            <div style={{ display: 'flex', borderBottom: '1px solid #F0E3E0', marginBottom: 10 }}>
+              {tabs.map(({ key, count }) => (
+                <button key={key} onClick={() => setTab(key)} style={{
+                  background: 'none', border: 'none',
+                  borderBottom: activeTab === key ? '2px solid #C16A82' : '2px solid transparent',
+                  color: activeTab === key ? '#C16A82' : '#B6A8AB',
+                  cursor: 'pointer', padding: '5px 12px', marginBottom: '-1px',
+                  fontSize: '0.78rem', fontWeight: activeTab === key ? 700 : 400,
+                  fontFamily: 'inherit', transition: 'all 0.15s',
+                }}>
+                  {key} <span style={{ opacity: 0.65 }}>{count}</span>
+                </button>
+              ))}
             </div>
-          ))}
+          )}
+
+          {activeTab === '사료' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {sources.map((s, i) => (
+                <div key={i} style={{ background: '#FFF8FA', border: '1px solid #F4DCE8', borderRadius: 8, padding: '8px 12px', fontSize: '0.77rem' }}>
+                  <span style={{ color: '#C16A82', fontWeight: 600 }}>{s.title}</span>
+                  {s.year && <span style={{ color: '#B6A8AB' }}> ({s.year})</span>}
+                  <div style={{ color: '#9a8b8e', marginTop: 4, lineHeight: 1.5 }}>{s.excerpt}</div>
+                  {s.url && (
+                    <a href={s.url} target="_blank" rel="noreferrer" style={{ color: '#a060c8', fontSize: '0.72rem', display: 'block', marginTop: 4 }}>
+                      원문 보기 →
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab === '신문' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {sourcesNews.map((s, i) => {
+                const articleTitle = s.excerpt?.includes(' — ')
+                  ? s.excerpt.split(' — ').slice(1).join(' — ')
+                  : s.excerpt
+                return (
+                  <div key={i} style={{ background: '#FFF8FA', border: '1px solid #F4DCE8', borderRadius: 8, padding: '8px 12px', fontSize: '0.77rem' }}>
+                    {articleTitle && <div style={{ color: '#C16A82', fontWeight: 600, marginBottom: 3 }}>{articleTitle}</div>}
+                    <div style={{ color: '#B6A8AB', fontSize: '0.72rem' }}>
+                      {s.title}{s.year ? ` · ${s.year}년` : ''}
+                    </div>
+                    {s.url && (
+                      <a href={s.url} target="_blank" rel="noreferrer" style={{ color: '#a060c8', fontSize: '0.72rem', display: 'block', marginTop: 4 }}>
+                        원문 보기 →
+                      </a>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -282,7 +328,7 @@ function UserBubble({ content }) {
 }
 
 /* ─── AI 말풍선 ─── */
-function AiBubble({ content, photos, sources, coords, query }) {
+function AiBubble({ content, photos, sources, sourcesNews, coords, showMap, query }) {
   return (
     <div style={{ display: 'flex', gap: 13, alignItems: 'flex-start' }}>
       <AiAvatar />
@@ -327,13 +373,13 @@ function AiBubble({ content, photos, sources, coords, query }) {
 
         <PhotoGrid photos={photos} />
 
-        {coords && (
+        {coords && showMap !== false && (
           <Suspense fallback={<div style={{ height: 240, background: '#F5EEF0', borderRadius: 14, marginTop: 16 }} />}>
             <HistoricalMap lat={coords.lat} lng={coords.lng} label={query} />
           </Suspense>
         )}
 
-        <Sources sources={sources} />
+        <SourcesPanel sources={sources} sourcesNews={sourcesNews} />
       </div>
     </div>
   )
@@ -402,13 +448,47 @@ function EmptyState({ onSend }) {
   )
 }
 
+/* ─── 옵션 칩 ─── */
+function OptionChip({ label, active, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        background: active ? '#FFF0F4' : '#fff',
+        border: `1px solid ${active ? '#E08AA0' : '#EAD8DC'}`,
+        color: active ? '#C16A82' : '#A88E94',
+        borderRadius: 999, padding: '5px 13px',
+        cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
+        fontWeight: active ? 600 : 400,
+        transition: 'all 0.15s',
+      }}
+    >
+      <span style={{
+        width: 14, height: 14, borderRadius: '50%',
+        border: `1.5px solid ${active ? '#E08AA0' : '#CFC4C7'}`,
+        background: active ? '#E08AA0' : 'transparent',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, transition: 'all 0.15s',
+      }}>
+        {active && <span style={{ width: 5, height: 5, background: '#fff', borderRadius: '50%' }} />}
+      </span>
+      {label}
+    </button>
+  )
+}
+
 /* ─── 메인 ChatPage ─── */
 export default function ChatPage() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [plusOpen, setPlusOpen] = useState(false)
+  const [opts, setOpts] = useState({ photos: true, news: true, map: true })
   const bottomRef = useRef(null)
   const textareaRef = useRef(null)
+
+  const toggleOpt = key => setOpts(o => ({ ...o, [key]: !o[key] }))
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -431,27 +511,37 @@ export default function ChatPage() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: apiMessages }),
+        body: JSON.stringify({
+          messages: apiMessages,
+          include_photos: opts.photos,
+          include_news: opts.news,
+        }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
 
-      const sourcePhotos = (data.sources || [])
-        .filter(s => s.image_url)
-        .map(s => ({
-          id: `src_${s.url}`,
-          title: s.title, year: s.year,
-          thumbnail: s.image_url, original: s.image_url,
-          source: s.title, url: s.url,
-        }))
+      const sourcePhotos = opts.photos
+        ? (data.sources || [])
+            .filter(s => s.image_url)
+            .map(s => ({
+              id: `src_${s.url}`,
+              title: s.title, year: s.year,
+              thumbnail: s.image_url, original: s.image_url,
+              source: s.category || s.title, url: s.url,
+            }))
+        : []
+      const _SOURCE_ORDER = { '서울역사아카이브': 0, '공유마당': 1, 'Wikimedia Commons': 2 }
       const allPhotos = [...(data.photos || []), ...sourcePhotos]
+        .sort((a, b) => (_SOURCE_ORDER[a.source] ?? 1) - (_SOURCE_ORDER[b.source] ?? 1))
 
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: data.answer || '답변을 생성하지 못했습니다.',
         photos: allPhotos,
         sources: data.sources || [],
+        sourcesNews: data.sources_news || [],
         coords: data.coords || null,
+        showMap: opts.map,
         query: trimmed,
       }])
     } catch {
@@ -489,7 +579,7 @@ export default function ChatPage() {
               {messages.map((msg, i) =>
                 msg.role === 'user'
                   ? <UserBubble key={i} content={msg.content} />
-                  : <AiBubble key={i} content={msg.content} photos={msg.photos} sources={msg.sources} coords={msg.coords} query={msg.query} />
+                  : <AiBubble key={i} content={msg.content} photos={msg.photos} sources={msg.sources} sourcesNews={msg.sourcesNews || []} coords={msg.coords} showMap={msg.showMap} query={msg.query} />
               )}
               {loading && <LoadingBubble />}
             </div>
@@ -504,27 +594,41 @@ export default function ChatPage() {
         borderTop: '1px solid #EFE2DF',
         padding: '18px 0 26px',
       }}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-          {EXAMPLES.slice(0, 3).map(ex => (
-            <button
-              key={ex}
-              onClick={() => send(ex)}
-              style={{
-                background: '#fff', border: '1px solid #EAD8DC',
-                color: '#A88E94', borderRadius: 999,
-                padding: '7px 15px', cursor: 'pointer',
-                fontSize: 13, fontFamily: 'inherit',
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#C16A82'; e.currentTarget.style.borderColor = '#EBAFC0' }}
-              onMouseLeave={e => { e.currentTarget.style.color = '#A88E94'; e.currentTarget.style.borderColor = '#EAD8DC' }}
-            >
-              {ex}
-            </button>
-          ))}
-        </div>
+        {/* 옵션 패널 */}
+        {plusOpen && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            marginBottom: 10, padding: '8px 4px',
+            borderBottom: '1px solid #F0E3E0',
+          }}>
+            <span style={{ fontSize: 12, color: '#C2B4B7', marginRight: 4 }}>옵션</span>
+            <OptionChip label="사진 포함" active={opts.photos} onClick={() => toggleOpt('photos')} />
+            <OptionChip label="신문 검색" active={opts.news} onClick={() => toggleOpt('news')} />
+            <OptionChip label="지도 표시" active={opts.map} onClick={() => toggleOpt('map')} />
+          </div>
+        )}
 
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          {/* 플러스 버튼 */}
+          <button
+            onClick={() => setPlusOpen(o => !o)}
+            title="검색 옵션"
+            style={{
+              flexShrink: 0, width: 40, height: 40,
+              borderRadius: '50%',
+              background: plusOpen ? '#FFF0F4' : '#fff',
+              border: `1.5px solid ${plusOpen ? '#E08AA0' : '#EAD8DC'}`,
+              color: plusOpen ? '#C16A82' : '#C2B4B7',
+              fontSize: 22, lineHeight: 1,
+              cursor: 'pointer', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.15s', marginBottom: 6,
+              fontWeight: 300,
+            }}
+          >
+            {plusOpen ? '×' : '+'}
+          </button>
+
           <textarea
             ref={textareaRef}
             value={input}

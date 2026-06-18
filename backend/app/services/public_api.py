@@ -8,7 +8,7 @@ async def fetch_gongu_photos(keyword: str, page: int = 1, per_page: int = 12) ->
     """공유마당(저작권위원회) 이미지 API"""
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(
-            "https://gongu.copyright.or.kr/gongu/openapi/openapi.do",
+            "https://gongu.copyright.or.kr/gongu/openapi/wrt/selectWrtListBySearchWrd.do",
             params={
                 "serviceKey": settings.gongu_api_key,
                 "searchWrd": keyword,
@@ -19,59 +19,63 @@ async def fetch_gongu_photos(keyword: str, page: int = 1, per_page: int = 12) ->
             }
         )
         resp.raise_for_status()
-        return resp.json()
+        try:
+            return resp.json()
+        except Exception:
+            print(f"[gongu] JSON 파싱 실패 (응답 앞부분): {resp.text[:200]}")
+            return {}
 
 
 # 한국어 장소/키워드 → Wikimedia Commons 검색어 매핑
 _PLACE_MAP = {
     # 건물/시설
-    '조선호텔': 'Chosun Hotel Seoul 1920s',
-    '경성역': 'Gyeongseong Station Seoul 1925',
-    '미쓰코시': 'Mitsukoshi department store Keijo',
-    '화신백화점': 'Hwashin department store Seoul colonial',
-    '경성부청': 'Keijo Prefecture Office colonial',
-    '조선총독부': 'Government General Building Korea colonial',
-    '경성우편국': 'Keijo post office colonial Korea',
-    '한국은행': 'Bank of Joseon Seoul colonial',
-    '경성재판소': 'Keijo court colonial Korea',
+    '조선호텔': 'Chosen Hotel Seoul',
+    '경성역': 'Seoul Station colonial',
+    '미쓰코시': 'Mitsukoshi Keijo',
+    '화신백화점': 'Hwashin department store',
+    '경성부청': 'Keijo Prefecture Office',
+    '조선총독부': 'Government General Korea',
+    '경성우편국': 'Keijo post office',
+    '한국은행': 'Bank of Joseon',
+    '경성재판소': 'Keijo court',
     # 장소/거리
-    '경성': 'Keijo Seoul 1920s colonial Korea',
-    '명동': 'Honmachi Keijo 1930s',
-    '혼마치': 'Honmachi Seoul colonial street',
-    '종로': 'Jongno Seoul colonial 1920s',
-    '북촌': 'Bukchon hanok Seoul colonial',
-    '남대문': 'Namdaemun Gate Seoul 1920s',
-    '동대문': 'Dongdaemun Gate Seoul colonial',
-    '광화문': 'Gwanghwamun Gate Seoul 1920s',
-    '덕수궁': 'Deoksugung Palace Seoul colonial',
-    '경복궁': 'Gyeongbokgung Palace Korea colonial',
-    '남산': 'Namsan Seoul colonial 1920s',
-    '한강': 'Han River Seoul colonial',
-    '인천': 'Incheon Korea colonial 1920s',
-    '부산': 'Busan Korea colonial 1920s',
-    '평양': 'Pyongyang Korea colonial 1920s',
-    '개성': 'Kaesong Korea colonial',
+    '경성': 'Keijo colonial Korea',
+    '명동': 'Honmachi Keijo',
+    '혼마치': 'Honmachi Seoul',
+    '종로': 'Jongno Seoul',
+    '북촌': 'Bukchon hanok',
+    '남대문': 'Namdaemun Gate',
+    '동대문': 'Dongdaemun Gate',
+    '광화문': 'Gwanghwamun Gate',
+    '덕수궁': 'Deoksugung Palace',
+    '경복궁': 'Gyeongbokgung colonial',
+    '남산': 'Namsan Seoul',
+    '한강': 'Han River Seoul',
+    '인천': 'Incheon colonial',
+    '부산': 'Busan colonial',
+    '평양': 'Pyongyang colonial',
+    '개성': 'Kaesong colonial',
     # 인물/계층
-    '기생': 'Gisaeng Korean entertainer colonial',
-    '모던걸': 'modern girl Korea 1930s fashion',
-    '모던보이': 'modern boy Korea 1930s fashion',
-    '신여성': 'new woman Korea 1920s',
-    '인력거': 'rickshaw Seoul Korea colonial',
+    '기생': 'Gisaeng Korea',
+    '모던걸': 'modern girl Korea',
+    '모던보이': 'modern boy Korea',
+    '신여성': 'new woman Korea',
+    '인력거': 'rickshaw Seoul',
     # 사건/운동
-    '독립운동': 'Korean independence movement 1919',
-    '의열단': 'Uiyeoldan Korean independence',
-    '3·1운동': 'March First Movement 1919 Korea',
-    '만세운동': 'Mansei demonstration Korea 1919',
+    '독립운동': 'Korean independence movement',
+    '의열단': 'Korean independence armed',
+    '3·1운동': 'March First Movement Korea',
+    '만세운동': 'Mansei demonstration Korea',
     # 생활/복식
-    '한복': 'hanbok traditional Korean dress colonial',
-    '전차': 'tram streetcar Seoul colonial 1920s',
-    '기차': 'railway train Korea colonial 1920s',
-    '시장': 'market Seoul Korea colonial',
-    '농촌': 'Korean rural village colonial',
-    '학교': 'school Korea colonial education',
-    '병원': 'hospital Korea colonial medical',
-    '카페': 'cafe coffee house Korea 1930s',
-    '술집': 'tavern bar Korea colonial',
+    '한복': 'hanbok Korean dress',
+    '전차': 'tram streetcar Seoul',
+    '기차': 'railway Korea colonial',
+    '시장': 'market Seoul colonial',
+    '농촌': 'Korean rural village',
+    '학교': 'school Korea colonial',
+    '병원': 'hospital Korea colonial',
+    '카페': 'cafe Korea 1930s',
+    '술집': 'tavern Korea colonial',
 }
 
 
@@ -80,13 +84,17 @@ def _build_wikimedia_query(query: str) -> str:
     decade = f"{year_match.group(1)[:3]}0s" if year_match else ''
     for korean, english in _PLACE_MAP.items():
         if korean in query:
-            return f"{english} {decade}".strip()
-    return f"Korea Japanese colonial {decade}".strip() if decade else "Korea Japanese colonial 1920s"
+            # 매핑값에 이미 decade 포함된 경우 중복 방지
+            if decade and decade not in english:
+                return f"{english} {decade}"
+            return english
+    return f"Korea Japanese colonial {decade}" if decade else "Korea Japanese colonial 1920s"
 
 
 async def fetch_wikimedia_photos(query: str, limit: int = 12) -> list[dict]:
     """Wikimedia Commons — 한국 근현대사 사진 (API 키 불필요)"""
     search_query = _build_wikimedia_query(query)
+    print(f"[wiki query] '{search_query}'")
 
     headers = {"User-Agent": "history-rag/1.0 (korean-history-research-tool)"}
     async with httpx.AsyncClient(timeout=15, headers=headers) as client:
@@ -107,6 +115,8 @@ async def fetch_wikimedia_photos(query: str, limit: int = 12) -> list[dict]:
         )
         resp.raise_for_status()
         data = resp.json()
+        if not data.get("query"):
+            print(f"[wiki] 응답에 query 없음: {str(data)[:300]}")
 
     photos = []
     pages = data.get("query", {}).get("pages", {})
@@ -144,6 +154,7 @@ async def fetch_wikimedia_photos(query: str, limit: int = 12) -> list[dict]:
             "url": f"https://commons.wikimedia.org/wiki/{page.get('title','').replace(' ','_')}",
         })
 
+    print(f"[wiki result] '{search_query}' → {len(photos)} photos (raw pages={len(pages)})")
     return photos[:limit]
 
 
