@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
+# CPU 전용 PyTorch 먼저 설치 (CUDA 버전 수GB 방지)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 한국어 임베딩 모델 미리 다운로드 (빌드 시 캐싱)

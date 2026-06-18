@@ -1,4 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, Suspense, lazy } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+
+const HistoricalMap = lazy(() => import('../components/HistoricalMap'))
 
 const EXAMPLES = [
   '1922년 조선호텔 외관과 내부 분위기는?',
@@ -9,62 +13,210 @@ const EXAMPLES = [
   '경성 북촌 한옥 골목 감각 묘사',
 ]
 
+/* ─── AI 아바타 ─── */
+function AiAvatar() {
+  return (
+    <div style={{
+      flexShrink: 0, width: 38, height: 38, borderRadius: '50%',
+      background: 'linear-gradient(140deg,#F7CBD7,#EC9BB0)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: '0 4px 14px rgba(224,150,170,.36), inset 0 1px 2px rgba(255,255,255,.5)',
+      position: 'relative', marginTop: 2,
+    }}>
+      <div style={{
+        width: 17, height: 17, background: '#fff',
+        clipPath: 'polygon(50% 0%,61% 39%,100% 50%,61% 61%,50% 100%,39% 61%,0% 50%,39% 39%)',
+        opacity: 0.96,
+      }} />
+      <div style={{
+        position: 'absolute', top: 7, right: 8,
+        width: 5, height: 5, background: '#fff',
+        clipPath: 'polygon(50% 0%,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0% 50%,38% 38%)',
+        opacity: 0.85,
+      }} />
+    </div>
+  )
+}
+
+/* ─── 신뢰도 범례 ─── */
+function TrustLegend() {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 16,
+      paddingBottom: 16, marginBottom: 18,
+      borderBottom: '1px solid #F4E9E6', flexWrap: 'wrap',
+    }}>
+      <span style={{ fontSize: 11, color: '#B6A8AB', fontWeight: 600 }}>정보 신뢰도</span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#9a8b8e' }}>
+        <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#E089A0', display: 'inline-block', flexShrink: 0 }} />
+        사료 근거
+      </span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#A9A1A4' }}>
+        <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#CCC5C4', display: 'inline-block', flexShrink: 0 }} />
+        보완·추정
+        <span style={{ color: '#B5ADB0' }}>(참고용)</span>
+      </span>
+    </div>
+  )
+}
+
+/* ─── 라이트박스 ─── */
+function Lightbox({ photos, index, onClose, onNav }) {
+  const photo = photos[index]
+
+  useEffect(() => {
+    const onKey = e => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft') onNav(-1)
+      if (e.key === 'ArrowRight') onNav(1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose, onNav])
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(20,8,14,0.93)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      {photos.length > 1 && (
+        <button
+          onClick={e => { e.stopPropagation(); onNav(-1) }}
+          style={{
+            position: 'absolute', left: '1rem',
+            background: 'rgba(255,255,255,0.1)', border: 'none',
+            color: '#fff', fontSize: '1.5rem', borderRadius: '50%',
+            width: 44, height: 44, cursor: 'pointer', display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+          }}
+        >‹</button>
+      )}
+
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}
+      >
+        <img
+          src={photo.original || photo.thumbnail}
+          alt={photo.title || ''}
+          style={{ maxWidth: '100%', maxHeight: '82vh', objectFit: 'contain', borderRadius: 6 }}
+        />
+        <div style={{ textAlign: 'center' }}>
+          {photo.title && <div style={{ color: '#fff', fontSize: '0.85rem' }}>{photo.title}</div>}
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', marginTop: '0.2rem', display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+            {photo.year && <span>{photo.year}년</span>}
+            {photo.source && <span>{photo.source}</span>}
+            {photo.url && (
+              <a href={photo.url} target="_blank" rel="noreferrer" style={{ color: '#f4a0bc' }}>원본 →</a>
+            )}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.7rem', marginTop: '0.3rem' }}>
+            {index + 1} / {photos.length} · ESC 닫기 · ← → 탐색
+          </div>
+        </div>
+      </div>
+
+      {photos.length > 1 && (
+        <button
+          onClick={e => { e.stopPropagation(); onNav(1) }}
+          style={{
+            position: 'absolute', right: '1rem',
+            background: 'rgba(255,255,255,0.1)', border: 'none',
+            color: '#fff', fontSize: '1.5rem', borderRadius: '50%',
+            width: 44, height: 44, cursor: 'pointer', display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+          }}
+        >›</button>
+      )}
+
+      <button
+        onClick={onClose}
+        style={{
+          position: 'absolute', top: '1rem', right: '1rem',
+          background: 'none', border: 'none',
+          color: 'rgba(255,255,255,0.5)', fontSize: '1.4rem', cursor: 'pointer',
+        }}
+      >✕</button>
+    </div>
+  )
+}
+
 /* ─── 사진 그리드 ─── */
 function PhotoGrid({ photos }) {
   const [expanded, setExpanded] = useState(false)
+  const [lbIndex, setLbIndex] = useState(null)
   const valid = (photos || []).filter(p => p.thumbnail || p.original)
   if (valid.length === 0) return null
 
   const INITIAL = 3
   const shown = expanded ? valid : valid.slice(0, INITIAL)
-  const hiddenCount = valid.length - INITIAL
+  const sources = valid.map(p => p.source).filter((v, i, a) => v && a.indexOf(v) === i).join(' · ')
+
+  const closeLb = () => setLbIndex(null)
+  const navLb = dir => setLbIndex(i => (i + dir + valid.length) % valid.length)
 
   return (
-    <div style={{ marginTop: '0.875rem' }}>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: '0.4rem',
-      }}>
+    <div style={{ marginTop: 22 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
         {shown.map((photo, i) => (
-          <a
+          <div
             key={photo.id || i}
-            href={photo.url || photo.original}
-            target="_blank"
-            rel="noreferrer"
+            onClick={() => setLbIndex(i)}
             title={photo.title}
-            style={{ display: 'block', borderRadius: '5px', overflow: 'hidden', aspectRatio: '4/3', background: '#111' }}
+            style={{
+              borderRadius: 11, overflow: 'hidden', aspectRatio: '4/3',
+              cursor: 'zoom-in', background: '#E8DDD4',
+              position: 'relative', display: 'flex', alignItems: 'flex-end', padding: 9,
+            }}
           >
             <img
               src={photo.thumbnail || photo.original}
               alt={photo.title || ''}
               loading="lazy"
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              onError={e => { e.target.closest('a').style.display = 'none' }}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              onError={e => { e.target.closest('div').style.display = 'none' }}
             />
-          </a>
+            {photo.title && (
+              <span style={{
+                position: 'relative', fontFamily: 'ui-monospace,monospace',
+                fontSize: 10, color: '#6f5f4d',
+                background: 'rgba(255,255,255,.72)', padding: '2px 7px',
+                borderRadius: 5, maxWidth: '100%', overflow: 'hidden',
+                textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {photo.title}
+              </span>
+            )}
+          </div>
         ))}
       </div>
 
-      {!expanded && hiddenCount > 0 && (
+      {valid.length > INITIAL && (
         <button
-          onClick={() => setExpanded(true)}
+          onClick={() => setExpanded(v => !v)}
           style={{
-            marginTop: '0.4rem', width: '100%',
-            background: 'none', border: '1px solid #2a2820',
-            color: '#6b6456', borderRadius: '5px',
-            padding: '0.35rem 0', cursor: 'pointer',
-            fontSize: '0.78rem', transition: 'color 0.15s',
+            marginTop: 8, width: '100%',
+            background: '#FCF1F4', border: '1px solid #F3E0E5',
+            color: '#C16A82', borderRadius: 10,
+            padding: 9, cursor: 'pointer',
+            fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
+            textAlign: 'center',
           }}
         >
-          사진 {hiddenCount}장 더보기
+          {expanded ? '접기 ▴' : `전체 보기 (${valid.length}장) ▾`}
         </button>
       )}
 
-      {valid.length > 0 && (
-        <div style={{ color: '#2a2820', fontSize: '0.7rem', marginTop: '0.3rem' }}>
-          {valid.map(p => p.source).filter((v, i, a) => a.indexOf(v) === i).join(' · ')}
-        </div>
+      {sources && (
+        <div style={{ fontSize: 11, color: '#B6A8AB', marginTop: 7 }}>{sources}</div>
+      )}
+
+      {lbIndex !== null && (
+        <Lightbox photos={valid} index={lbIndex} onClose={closeLb} onNav={navLb} />
       )}
     </div>
   )
@@ -76,32 +228,30 @@ function Sources({ sources }) {
   if (!sources || sources.length === 0) return null
 
   return (
-    <div style={{ marginTop: '0.5rem' }}>
-      <button
+    <div style={{ marginTop: 16, paddingTop: 13, borderTop: '1px solid #F2E6E3' }}>
+      <div
         onClick={() => setOpen(v => !v)}
-        style={{
-          background: 'none', border: 'none',
-          color: '#3d3830', fontSize: '0.75rem',
-          cursor: 'pointer', padding: '0.2rem 0',
-          transition: 'color 0.15s',
-        }}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
       >
-        {open ? '출처 접기 ▴' : `참고 사료 ${sources.length}건 ▾`}
-      </button>
+        <span style={{ fontSize: 12, color: '#9a8b8e', fontWeight: 600 }}>
+          참고 사료 {sources.length}건
+        </span>
+        <span style={{ fontSize: 11, color: '#C2B4B7' }}>{open ? '▴' : '▾'}</span>
+      </div>
+
       {open && (
-        <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {sources.map((s, i) => (
             <div key={i} style={{
-              background: '#111', border: '1px solid #222',
-              borderRadius: '5px', padding: '0.5rem 0.75rem',
-              fontSize: '0.77rem',
+              background: '#FFF8FA', border: '1px solid #F4DCE8',
+              borderRadius: 8, padding: '8px 12px', fontSize: '0.77rem',
             }}>
-              <span style={{ color: '#c9a96e' }}>{s.title}</span>
-              {s.year && <span style={{ color: '#3d3830' }}> ({s.year})</span>}
-              <div style={{ color: '#6b6456', marginTop: '0.2rem', lineHeight: '1.5' }}>{s.excerpt}</div>
+              <span style={{ color: '#C16A82', fontWeight: 600 }}>{s.title}</span>
+              {s.year && <span style={{ color: '#B6A8AB' }}> ({s.year})</span>}
+              <div style={{ color: '#9a8b8e', marginTop: 4, lineHeight: 1.5 }}>{s.excerpt}</div>
               {s.url && (
                 <a href={s.url} target="_blank" rel="noreferrer"
-                  style={{ color: '#4a7c8a', fontSize: '0.72rem', display: 'block', marginTop: '0.2rem' }}>
+                  style={{ color: '#a060c8', fontSize: '0.72rem', display: 'block', marginTop: 4 }}>
                   원문 보기 →
                 </a>
               )}
@@ -116,16 +266,14 @@ function Sources({ sources }) {
 /* ─── 유저 말풍선 ─── */
 function UserBubble({ content }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1.25rem', paddingLeft: '15%' }}>
+    <div style={{ alignSelf: 'flex-end', maxWidth: '64%' }}>
       <div style={{
-        background: '#1e1d19',
-        border: '1px solid #2e2c26',
-        borderRadius: '14px 14px 3px 14px',
-        padding: '0.75rem 1rem',
-        color: '#e8e2d9',
-        fontSize: '0.9rem',
-        lineHeight: '1.65',
-        whiteSpace: 'pre-wrap',
+        background: '#F6DCE3', color: '#5b4a50',
+        padding: '14px 21px',
+        borderRadius: '22px 22px 6px 22px',
+        fontSize: 15, lineHeight: 1.5,
+        boxShadow: '0 2px 10px rgba(200,120,140,.10)',
+        wordBreak: 'break-word',
       }}>
         {content}
       </div>
@@ -134,33 +282,57 @@ function UserBubble({ content }) {
 }
 
 /* ─── AI 말풍선 ─── */
-function AiBubble({ content, photos, sources }) {
+function AiBubble({ content, photos, sources, coords, query }) {
   return (
-    <div style={{ display: 'flex', gap: '0.625rem', marginBottom: '1.5rem', alignItems: 'flex-start', paddingRight: '8%' }}>
+    <div style={{ display: 'flex', gap: 13, alignItems: 'flex-start' }}>
+      <AiAvatar />
       <div style={{
-        width: '26px', height: '26px', borderRadius: '50%',
-        background: 'rgba(201,169,110,0.1)', border: '1px solid rgba(201,169,110,0.3)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0, fontSize: '0.65rem', color: '#c9a96e', marginTop: '2px',
-        letterSpacing: '-0.02em',
-      }}>AI</div>
+        flex: 1, minWidth: 0,
+        background: '#FFFFFF',
+        border: '1px solid #F0E3E0',
+        borderRadius: '8px 22px 22px 22px',
+        padding: '24px 26px',
+        boxShadow: '0 4px 18px rgba(150,110,115,.07)',
+      }}>
+        <TrustLegend />
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          background: '#161511',
-          border: '1px solid #2a2820',
-          borderRadius: '3px 14px 14px 14px',
-          padding: '0.875rem 1rem',
-          color: '#e8e2d9',
-          fontSize: '0.9rem',
-          lineHeight: '1.85',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-        }}>
-          {content}
+        <div style={{ color: '#4c4145', fontSize: 15, lineHeight: 1.75, wordBreak: 'break-word' }}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+            p: ({ children }) => <p style={{ margin: '0 0 0.75em' }}>{children}</p>,
+            strong: ({ children }) => <strong style={{ color: '#C16A82', fontWeight: 700 }}>{children}</strong>,
+            del: ({ children }) => <span style={{ color: '#ABA4A6', fontStyle: 'normal', textDecoration: 'none' }}>{children}</span>,
+            h1: ({ children }) => <h1 style={{ color: '#574349', fontSize: '1.1rem', margin: '0.75em 0 0.4em', fontWeight: 700 }}>{children}</h1>,
+            h2: ({ children }) => <h2 style={{ color: '#574349', fontSize: '1rem', margin: '0.75em 0 0.4em', fontWeight: 700 }}>{children}</h2>,
+            h3: ({ children }) => <h3 style={{ color: '#C16A82', fontSize: '0.95rem', margin: '0.5em 0 0.3em', fontWeight: 700 }}>{children}</h3>,
+            ul: ({ children }) => <ul style={{ paddingLeft: '1.25em', margin: '0.4em 0' }}>{children}</ul>,
+            ol: ({ children }) => <ol style={{ paddingLeft: '1.25em', margin: '0.4em 0' }}>{children}</ol>,
+            li: ({ children }) => <li style={{ marginBottom: '0.2em' }}>{children}</li>,
+            code: ({ children }) => <code style={{ background: '#FFF5F8', color: '#C16A82', padding: '0.1em 0.3em', borderRadius: 3, fontSize: '0.85em' }}>{children}</code>,
+            table: ({ children }) => <table style={{ borderCollapse: 'collapse', width: '100%', margin: '0.5em 0', fontSize: '0.85rem' }}>{children}</table>,
+            th: ({ children }) => <th style={{ border: '1px solid #F0E3E0', padding: '0.4em 0.75em', background: '#FFF5F8', color: '#C16A82', textAlign: 'left' }}>{children}</th>,
+            td: ({ children }) => <td style={{ border: '1px solid #F0E3E0', padding: '0.4em 0.75em', color: '#4c4145' }}>{children}</td>,
+            hr: () => (
+              <div style={{
+                height: 2, margin: '18px 0',
+                background: 'radial-gradient(circle, #E7CFD5 1px, transparent 1.4px) repeat-x',
+                backgroundSize: '9px 2px',
+                WebkitMask: 'linear-gradient(90deg,transparent,#000 20%,#000 80%,transparent)',
+                mask: 'linear-gradient(90deg,transparent,#000 20%,#000 80%,transparent)',
+              }} />
+            ),
+          }}>
+            {content}
+          </ReactMarkdown>
         </div>
 
         <PhotoGrid photos={photos} />
+
+        {coords && (
+          <Suspense fallback={<div style={{ height: 240, background: '#F5EEF0', borderRadius: 14, marginTop: 16 }} />}>
+            <HistoricalMap lat={coords.lat} lng={coords.lng} label={query} />
+          </Suspense>
+        )}
+
         <Sources sources={sources} />
       </div>
     </div>
@@ -170,17 +342,14 @@ function AiBubble({ content, photos, sources }) {
 /* ─── 로딩 말풍선 ─── */
 function LoadingBubble() {
   return (
-    <div style={{ display: 'flex', gap: '0.625rem', marginBottom: '1.25rem', alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', gap: 13, alignItems: 'flex-start' }}>
+      <AiAvatar />
       <div style={{
-        width: '26px', height: '26px', borderRadius: '50%',
-        background: 'rgba(201,169,110,0.1)', border: '1px solid rgba(201,169,110,0.3)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0, fontSize: '0.65rem', color: '#c9a96e',
-      }}>AI</div>
-      <div style={{
-        background: '#161511', border: '1px solid #2a2820',
-        borderRadius: '3px 14px 14px 14px',
-        padding: '0.875rem 1rem', color: '#6b6456', fontSize: '0.85rem',
+        background: '#FFFFFF', border: '1px solid #F0E3E0',
+        borderRadius: '8px 22px 22px 22px',
+        padding: '20px 26px',
+        color: '#9a8b8e', fontSize: 14,
+        boxShadow: '0 4px 18px rgba(150,110,115,.07)',
       }}>
         사료 검색 중<LoadingDots />
       </div>
@@ -200,32 +369,30 @@ function LoadingDots() {
 /* ─── 빈 화면 예시 질문 ─── */
 function EmptyState({ onSend }) {
   return (
-    <div style={{ textAlign: 'center', padding: '5rem 1rem 2rem' }}>
+    <div style={{ textAlign: 'center', padding: '5rem 0 2rem' }}>
       <h1 style={{
-        fontSize: '1.6rem', fontWeight: '300', color: '#e8e2d9',
-        letterSpacing: '0.12em', marginBottom: '0.5rem',
+        fontSize: '1.6rem', fontWeight: 700, color: '#C16A82',
+        letterSpacing: '-0.01em', marginBottom: '0.5rem',
       }}>
-        역사 고증 AI
+        근현대사 고증 AI
       </h1>
-      <p style={{ color: '#6b6456', fontSize: '0.82rem', marginBottom: '2.5rem' }}>
+      <p style={{ color: '#9a8b8e', fontSize: '0.85rem', marginBottom: '2.5rem' }}>
         일제강점기 (1910~1945) · 소설 집필 고증 채팅
       </p>
-      <div style={{
-        display: 'flex', gap: '0.5rem', flexWrap: 'wrap',
-        justifyContent: 'center', maxWidth: '640px', margin: '0 auto',
-      }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
         {EXAMPLES.map(ex => (
           <button
             key={ex}
             onClick={() => onSend(ex)}
             style={{
-              background: 'none', border: '1px solid #2a2820',
-              color: '#6b6456', borderRadius: '20px',
-              padding: '0.4rem 0.875rem', cursor: 'pointer',
-              fontSize: '0.8rem', transition: 'all 0.15s',
+              background: '#fff', border: '1px solid #EAD8DC',
+              color: '#A88E94', borderRadius: 999,
+              padding: '7px 15px', cursor: 'pointer',
+              fontSize: 13, fontFamily: 'inherit',
+              transition: 'all 0.15s',
             }}
-            onMouseEnter={e => { e.target.style.color = '#c9a96e'; e.target.style.borderColor = '#4a3e2a' }}
-            onMouseLeave={e => { e.target.style.color = '#6b6456'; e.target.style.borderColor = '#2a2820' }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#C16A82'; e.currentTarget.style.borderColor = '#EBAFC0' }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#A88E94'; e.currentTarget.style.borderColor = '#EAD8DC' }}
           >
             {ex}
           </button>
@@ -252,9 +419,7 @@ export default function ChatPage() {
     if (!trimmed || loading) return
 
     setInput('')
-    if (textareaRef.current) {
-      textareaRef.current.style.height = '44px'
-    }
+    if (textareaRef.current) textareaRef.current.style.height = '52px'
 
     const userMsg = { role: 'user', content: trimmed }
     const updated = [...messages, userMsg]
@@ -271,18 +436,29 @@ export default function ChatPage() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
 
+      const sourcePhotos = (data.sources || [])
+        .filter(s => s.image_url)
+        .map(s => ({
+          id: `src_${s.url}`,
+          title: s.title, year: s.year,
+          thumbnail: s.image_url, original: s.image_url,
+          source: s.title, url: s.url,
+        }))
+      const allPhotos = [...(data.photos || []), ...sourcePhotos]
+
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: data.answer || '답변을 생성하지 못했습니다.',
-        photos: data.photos || [],
+        photos: allPhotos,
         sources: data.sources || [],
+        coords: data.coords || null,
+        query: trimmed,
       }])
-    } catch (e) {
+    } catch {
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: '서버 연결 실패. Docker가 실행 중인지 확인하세요.\n\n` docker-compose up `',
-        photos: [],
-        sources: [],
+        content: '서버 연결 실패. Docker가 실행 중인지 확인하세요.\n\n`docker compose up`',
+        photos: [], sources: [],
       }])
     } finally {
       setLoading(false)
@@ -291,73 +467,64 @@ export default function ChatPage() {
   }
 
   const handleKeyDown = e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      send()
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
   const handleTextareaChange = e => {
     setInput(e.target.value)
-    e.target.style.height = '44px'
+    e.target.style.height = '52px'
     e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px'
   }
 
   const isEmpty = messages.length === 0
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column',
-      height: 'calc(100vh - 61px)',
-    }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 65px)' }}>
       {/* 메시지 영역 */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0 1rem' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '36px 0 1rem' }}>
         {isEmpty
           ? <EmptyState onSend={send} />
-          : messages.map((msg, i) =>
-              msg.role === 'user'
-                ? <UserBubble key={i} content={msg.content} />
-                : <AiBubble key={i} content={msg.content} photos={msg.photos} sources={msg.sources} />
-            )
+          : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              {messages.map((msg, i) =>
+                msg.role === 'user'
+                  ? <UserBubble key={i} content={msg.content} />
+                  : <AiBubble key={i} content={msg.content} photos={msg.photos} sources={msg.sources} coords={msg.coords} query={msg.query} />
+              )}
+              {loading && <LoadingBubble />}
+            </div>
+          )
         }
-        {loading && <LoadingBubble />}
         <div ref={bottomRef} />
       </div>
 
-      {/* 입력 영역 */}
+      {/* 푸터 */}
       <div style={{
-        borderTop: '1px solid #1e1d19',
-        paddingTop: '0.75rem',
-        background: '#0f0e0c',
         flexShrink: 0,
+        borderTop: '1px solid #EFE2DF',
+        padding: '18px 0 26px',
       }}>
-        {/* 이어서 물어볼 만한 예시 (대화 중일 때) */}
-        {!isEmpty && !loading && (
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.6rem' }}>
-            {EXAMPLES.slice(0, 3).map(ex => (
-              <button
-                key={ex}
-                onClick={() => send(ex)}
-                style={{
-                  background: 'none', border: '1px solid #222',
-                  color: '#3d3830', borderRadius: '20px',
-                  padding: '0.25rem 0.65rem', cursor: 'pointer',
-                  fontSize: '0.75rem', transition: 'all 0.15s',
-                }}
-                onMouseEnter={e => { e.target.style.color = '#6b6456'; e.target.style.borderColor = '#2a2820' }}
-                onMouseLeave={e => { e.target.style.color = '#3d3830'; e.target.style.borderColor = '#222' }}
-              >
-                {ex}
-              </button>
-            ))}
-          </div>
-        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+          {EXAMPLES.slice(0, 3).map(ex => (
+            <button
+              key={ex}
+              onClick={() => send(ex)}
+              style={{
+                background: '#fff', border: '1px solid #EAD8DC',
+                color: '#A88E94', borderRadius: 999,
+                padding: '7px 15px', cursor: 'pointer',
+                fontSize: 13, fontFamily: 'inherit',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#C16A82'; e.currentTarget.style.borderColor = '#EBAFC0' }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#A88E94'; e.currentTarget.style.borderColor = '#EAD8DC' }}
+            >
+              {ex}
+            </button>
+          ))}
+        </div>
 
-        <div style={{
-          display: 'flex', gap: '0.6rem',
-          background: '#1a1915', border: '1px solid #2a2820',
-          borderRadius: '10px', padding: '0.4rem 0.5rem',
-        }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
           <textarea
             ref={textareaRef}
             value={input}
@@ -366,11 +533,13 @@ export default function ChatPage() {
             placeholder="고증이 필요한 장면이나 내용을 질문하세요…"
             rows={1}
             style={{
-              flex: 1, background: 'none', border: 'none', outline: 'none',
-              color: '#e8e2d9', fontSize: '0.9rem',
-              padding: '0.5rem 0.625rem', resize: 'none',
-              height: '44px', maxHeight: '140px',
-              fontFamily: 'inherit', lineHeight: '1.55',
+              flex: 1,
+              background: '#fff', border: '1px solid #ECDDDF',
+              borderRadius: 16, padding: '15px 18px',
+              fontSize: 14, color: '#4c4145',
+              outline: 'none', resize: 'none',
+              height: 52, maxHeight: 140,
+              fontFamily: 'inherit', lineHeight: 1.5,
               overflowY: 'auto',
             }}
           />
@@ -378,20 +547,26 @@ export default function ChatPage() {
             onClick={() => send()}
             disabled={loading || !input.trim()}
             style={{
-              background: loading || !input.trim() ? '#2a2820' : '#c9a96e',
-              color: loading || !input.trim() ? '#6b6456' : '#0f0e0c',
-              border: 'none', borderRadius: '7px',
-              padding: '0 1.125rem', cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
-              fontWeight: '600', fontSize: '0.875rem',
-              alignSelf: 'flex-end', height: '36px', marginBottom: '2px',
-              transition: 'background 0.15s',
               flexShrink: 0,
+              background: loading || !input.trim()
+                ? '#E8D8DC'
+                : 'linear-gradient(135deg,#EFA6B8,#E08AA0)',
+              color: '#fff',
+              border: 'none', borderRadius: 16,
+              padding: '0 28px',
+              fontWeight: 700, fontSize: 14,
+              cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
+              boxShadow: loading || !input.trim() ? 'none' : '0 4px 14px rgba(224,138,160,.35)',
+              fontFamily: 'inherit',
+              transition: 'all 0.15s',
+              height: 52,
             }}
           >
             전송
           </button>
         </div>
-        <div style={{ color: '#252320', fontSize: '0.7rem', textAlign: 'center', marginTop: '0.4rem' }}>
+
+        <div style={{ textAlign: 'center', fontSize: 12, color: '#C2B4B7', marginTop: 12 }}>
           Enter 전송 · Shift+Enter 줄바꿈
         </div>
       </div>

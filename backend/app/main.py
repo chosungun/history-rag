@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import search, ingest, photos, chat
+from app.api import search, ingest, photos, chat, map, imgproxy
 from app.core.config import settings
 from app.core.chroma import init_chroma
 
@@ -25,6 +25,8 @@ app.include_router(chat.router, prefix="/api/chat", tags=["채팅"])
 app.include_router(search.router, prefix="/api/search", tags=["검색"])
 app.include_router(ingest.router, prefix="/api/ingest", tags=["데이터 수집"])
 app.include_router(photos.router, prefix="/api/photos", tags=["사진"])
+app.include_router(map.router, prefix="/api/map", tags=["지도"])
+app.include_router(imgproxy.router, prefix="/api/img", tags=["이미지프록시"])
 
 @app.get("/health")
 async def health():

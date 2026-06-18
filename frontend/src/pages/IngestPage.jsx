@@ -1,121 +1,144 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 
-const S = {
-  title: { fontSize: '1.2rem', fontWeight: '500', color: '#e8e2d9', marginBottom: '0.3rem' },
-  sub: { color: '#6b6456', fontSize: '0.8rem', marginBottom: '2rem' },
-  grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' },
-  card: { background: '#1a1915', border: '1px solid #2a2820', borderRadius: '10px', padding: '1.5rem' },
-  cardTitle: { color: '#c9a96e', fontSize: '0.78rem', fontWeight: '600', letterSpacing: '0.08em', marginBottom: '1rem' },
-  label: { color: '#6b6456', fontSize: '0.8rem', marginBottom: '0.3rem', display: 'block' },
-  input: {
-    width: '100%', background: '#111', border: '1px solid #2a2820',
-    borderRadius: '6px', color: '#e8e2d9', fontSize: '0.875rem',
-    padding: '0.6rem 0.875rem', outline: 'none', marginBottom: '1rem',
-    boxSizing: 'border-box',
-  },
-  btn: color => ({
-    width: '100%', background: color || '#c9a96e', color: '#0f0e0c',
-    border: 'none', borderRadius: '6px', padding: '0.65rem',
-    cursor: 'pointer', fontWeight: '600', fontSize: '0.875rem',
-  }),
-  status: type => ({
-    marginTop: '0.875rem', padding: '0.75rem', borderRadius: '6px', fontSize: '0.83rem',
-    background: type === 'success' ? '#0f1f0f' : type === 'error' ? '#1f0f0f' : '#1a1915',
-    color: type === 'success' ? '#5cb85c' : type === 'error' ? '#e05c5c' : '#6b6456',
-    border: `1px solid ${type === 'success' ? '#1a3a1a' : type === 'error' ? '#3a1a1a' : '#2a2820'}`,
-  }),
-  textarea: {
-    width: '100%', background: '#111', border: '1px solid #2a2820',
-    borderRadius: '6px', color: '#e8e2d9', fontSize: '0.78rem',
-    padding: '0.75rem', outline: 'none', resize: 'vertical', minHeight: '130px',
-    fontFamily: 'monospace', marginBottom: '0.875rem', boxSizing: 'border-box',
-  },
-  tip: { color: '#3d3830', fontSize: '0.74rem', lineHeight: '1.9', marginTop: '1rem' },
+function elapsed(startedAt) {
+  const sec = Math.floor(Date.now() / 1000 - startedAt)
+  if (sec < 60) return `${sec}초`
+  return `${Math.floor(sec / 60)}분 ${sec % 60}초`
+}
+
+function JobsPanel({ jobs }) {
+  const [, setNow] = useState(Date.now())
+  useEffect(() => {
+    if (!jobs.some(j => j.status === 'running')) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [jobs])
+
+  if (!jobs.length) return null
+
+  const total = jobs.length
+  const done = jobs.filter(j => j.status === 'done').length
+  const errors = jobs.filter(j => j.status === 'error').length
+  const current = jobs.find(j => j.status === 'running')
+  const isAllDone = done + errors === total
+  const totalSaved = jobs.reduce((s, j) => s + (j.saved || 0), 0)
+  const pct = Math.round((done + errors) / total * 100)
+  const firstJob = jobs[jobs.length - 1]
+
+  return (
+    <div style={{ marginBottom: '2rem' }}>
+      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
+      <div style={{
+        padding: '1rem 1.25rem',
+        borderRadius: 10,
+        background: isAllDone ? (errors ? '#fff8f2' : '#f4fff4') : '#fff8fa',
+        border: `1px solid ${isAllDone ? (errors ? '#f0d8c8' : '#c8e8c8') : '#f4dce8'}`,
+      }}>
+        {/* 상태 헤더 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          {!isAllDone
+            ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#C16A82', flexShrink: 0, display: 'inline-block', animation: 'pulse 1.2s infinite' }} />
+            : <span style={{ fontSize: 14, color: errors ? '#c44040' : '#2a8a2a' }}>{errors ? '⚠' : '✓'}</span>
+          }
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#4c4145', flex: 1 }}>
+            {isAllDone
+              ? `수집 완료 — 총 ${totalSaved.toLocaleString()}건 저장`
+              : `수집 중 · ${done}/${total} 완료`
+            }
+          </span>
+          <span style={{ fontSize: 12, color: '#9a8b8e' }}>
+            {elapsed(firstJob.started_at)} 경과
+          </span>
+        </div>
+
+        {/* 현재 작업 */}
+        {current && (
+          <div style={{ fontSize: 12, color: '#9a8b8e', marginBottom: 8 }}>
+            {current.phase} · {current.label}
+          </div>
+        )}
+
+        {/* 전체 진행 바 */}
+        <div style={{ height: 4, borderRadius: 2, background: '#F0E3E0', overflow: 'hidden' }}>
+          <div style={{
+            height: '100%', borderRadius: 2,
+            background: isAllDone ? (errors ? '#e89040' : '#40a840') : 'linear-gradient(90deg,#EFA6B8,#E08AA0)',
+            width: `${pct}%`,
+            transition: 'width 0.5s ease',
+          }} />
+        </div>
+
+        {/* 오류 요약 */}
+        {errors > 0 && (
+          <div style={{ fontSize: 11, color: '#c44040', marginTop: 6 }}>
+            {errors}건 오류 — {jobs.filter(j => j.status === 'error').map(j => j.label).join(', ')}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export default function IngestPage() {
-  const [keyword, setKeyword] = useState('')
-  const [apiStatus, setApiStatus] = useState(null)
-  const [manualJson, setManualJson] = useState('')
-  const [manualStatus, setManualStatus] = useState(null)
+  const [jobs, setJobs] = useState([])
+  const pollRef = useRef(null)
 
-  const fetchFromWiki = async () => {
-    if (!keyword.trim()) return
-    setApiStatus({ type: 'loading', msg: '위키백과에서 데이터 수집 중...' })
-    try {
-      const res = await fetch('/api/ingest/fetch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword, sources: ['wikipedia'] }),
-      })
-      const data = await res.json()
-      setApiStatus({ type: 'success', msg: data.message })
-    } catch {
-      setApiStatus({ type: 'error', msg: '수집 실패. 백엔드 연결을 확인하세요.' })
-    }
+  const startPolling = () => {
+    if (pollRef.current) return
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch('/api/ingest/jobs')
+        const data = await res.json()
+        setJobs(data)
+        if (!data.some(j => j.status === 'running')) {
+          clearInterval(pollRef.current)
+          pollRef.current = null
+        }
+      } catch {}
+    }, 2000)
   }
 
-  const ingestManual = async () => {
+  useEffect(() => {
+    fetch('/api/ingest/jobs').then(r => r.json()).then(setJobs).catch(() => {})
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [])
+
+  const fetchAll = async () => {
+    if (!window.confirm('신문 제외 전체 일괄 수집을 시작합니다.\n잡지 13종 + 관보 + 민족운동·문서류 22종 (순번형)\nhad·haf·ju는 대용량 cap 적용, 나머지 무제한\n순차 실행으로 수 시간~하루 소요될 수 있습니다.\n시작하시겠습니까?')) return
     try {
-      const docs = JSON.parse(manualJson)
-      const res = await fetch('/api/ingest/manual', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(docs),
-      })
+      const res = await fetch('/api/ingest/fetch-all', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       const data = await res.json()
-      setManualStatus({ type: 'success', msg: `${data.ingested}개 문서 저장 완료!` })
-      setManualJson('')
+      if (data.job_ids) {
+        const r = await fetch('/api/ingest/jobs')
+        setJobs(await r.json())
+        startPolling()
+      }
     } catch (e) {
-      setManualStatus({ type: 'error', msg: 'JSON 오류 또는 서버 오류: ' + e.message })
+      console.error(e)
     }
   }
 
   return (
     <div>
-      <h2 style={S.title}>자료 입력</h2>
-      <p style={S.sub}>사료를 AI 검색 DB에 저장합니다 — 저장한 내용이 채팅 답변의 근거가 됩니다</p>
+      <h2 style={{ fontSize: '1.2rem', fontWeight: '500', color: '#2a1820', marginBottom: '0.3rem' }}>자료 입력</h2>
+      <p style={{ color: '#8a7080', fontSize: '0.8rem', marginBottom: '2rem' }}>사료를 AI 검색 DB에 저장합니다 — 저장한 내용이 채팅 답변의 근거가 됩니다</p>
 
-      <div style={S.grid}>
-        {/* 위키백과 자동 수집 */}
-        <div style={S.card}>
-          <div style={S.cardTitle}>위키백과 자동 수집</div>
-          <label style={S.label}>검색 키워드</label>
-          <input
-            style={S.input}
-            value={keyword}
-            onChange={e => setKeyword(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && fetchFromWiki()}
-            placeholder="예: 조선호텔, 의열단, 경성"
-          />
-          <button style={S.btn()} onClick={fetchFromWiki}>수집 시작</button>
-          {apiStatus && <div style={S.status(apiStatus.type)}>{apiStatus.msg}</div>}
-          <div style={S.tip}>
-            💡 API 키 없이 바로 사용 가능<br />
-            한국어 위키백과에서 관련 문서를 자동으로<br />
-            가져와 ChromaDB에 저장합니다
-          </div>
-        </div>
+      <JobsPanel jobs={jobs} />
 
-        {/* 직접 텍스트 입력 */}
-        <div style={S.card}>
-          <div style={S.cardTitle}>직접 텍스트 입력</div>
-          <label style={S.label}>JSON 형식으로 붙여넣기</label>
-          <textarea
-            style={S.textarea}
-            value={manualJson}
-            onChange={e => setManualJson(e.target.value)}
-            placeholder={`[\n  {\n    "id": "doc001",\n    "text": "사료 내용...",\n    "source": "출처명",\n    "year": "1922",\n    "url": "https://..."\n  }\n]`}
-          />
-          <button style={S.btn('#4a7c8a')} onClick={ingestManual}>DB에 저장</button>
-          {manualStatus && <div style={S.status(manualStatus.type)}>{manualStatus.msg}</div>}
-          <div style={S.tip}>
-            💡 추천 출처<br />
-            우리역사넷 (contents.history.go.kr)<br />
-            서울역사아카이브 (museum.seoul.go.kr)<br />
-            한국민족문화대백과사전 (encykorea.aks.ac.kr)
-          </div>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <button
+          onClick={fetchAll}
+          style={{
+            background: 'transparent', border: '1px solid #c94470', color: '#c94470',
+            borderRadius: '7px', padding: '0.6rem 1.4rem', cursor: 'pointer',
+            fontSize: '0.85rem', fontWeight: '600', letterSpacing: '0.04em',
+          }}
+        >
+          전체 일괄 수집 시작
+        </button>
+        <span style={{ color: '#8a7080', fontSize: '0.75rem' }}>
+          신문 제외 전체 — 잡지 13종 + 관보 + 민족운동·문서류 22종 · 순차 실행 · 수 시간 소요
+        </span>
       </div>
     </div>
   )

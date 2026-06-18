@@ -7,62 +7,79 @@ const NAV = [
   { id: 'ingest', label: '자료 입력' },
 ]
 
-const S = {
-  wrap: { minHeight: '100vh', background: '#0f0e0c', display: 'flex', flexDirection: 'column' },
-  header: {
-    borderBottom: '1px solid #1e1d19',
-    padding: '0 2rem',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '2rem',
-    background: '#0f0e0c',
-    position: 'sticky',
-    top: 0,
-    zIndex: 10,
-    flexShrink: 0,
-  },
-  logo: {
-    fontSize: '0.9rem',
-    fontWeight: '600',
-    color: '#c9a96e',
-    letterSpacing: '0.08em',
-    padding: '1.1rem 0',
-    whiteSpace: 'nowrap',
-  },
-  nav: { display: 'flex', gap: '0', marginLeft: 'auto' },
-  navBtn: active => ({
-    background: 'none',
-    border: 'none',
-    color: active ? '#c9a96e' : '#6b6456',
-    cursor: 'pointer',
-    padding: '1.1rem 0.875rem',
-    fontSize: '0.82rem',
-    fontWeight: active ? '600' : '400',
-    borderBottom: active ? '2px solid #c9a96e' : '2px solid transparent',
-    transition: 'color 0.15s',
-    whiteSpace: 'nowrap',
-  }),
-  main: { maxWidth: '820px', margin: '0 auto', padding: '0 2rem', width: '100%', flex: 1 },
-  mainIngest: { maxWidth: '820px', margin: '0 auto', padding: '2rem', width: '100%', flex: 1 },
+function LogoIcon() {
+  return (
+    <div style={{
+      width: 32, height: 32, borderRadius: 11,
+      background: 'linear-gradient(135deg,#F3C3D0,#E79DB0)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: '0 4px 12px rgba(224,150,170,.30)',
+      flexShrink: 0,
+    }}>
+      <div style={{
+        width: 13, height: 13, background: '#fff',
+        clipPath: 'polygon(50% 0%,61% 39%,100% 50%,61% 61%,50% 100%,39% 61%,0% 50%,39% 39%)',
+        opacity: 0.92,
+      }} />
+    </div>
+  )
 }
 
 export default function App() {
   const [tab, setTab] = useState('chat')
 
   return (
-    <div style={S.wrap}>
-      <header style={S.header}>
-        <span style={S.logo}>근현대사 고증 AI</span>
-        <nav style={S.nav}>
+    <div style={{ minHeight: '100vh', background: '#FAF5F1', display: 'flex', flexDirection: 'column' }}>
+      <header style={{
+        flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 44px', height: 65,
+        borderBottom: '1px solid #EFE2DF',
+        background: 'rgba(250,245,241,.85)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        position: 'sticky', top: 0, zIndex: 10,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <LogoIcon />
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#C16A82', letterSpacing: '-0.01em' }}>
+            근현대사 고증 AI
+          </span>
+        </div>
+        <nav style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           {NAV.map(n => (
-            <button key={n.id} style={S.navBtn(tab === n.id)} onClick={() => setTab(n.id)}>
+            <button
+              key={n.id}
+              onClick={() => setTab(n.id)}
+              style={{
+                background: tab === n.id ? '#FBE7EC' : 'transparent',
+                border: 'none',
+                color: tab === n.id ? '#C16A82' : '#A99B9E',
+                fontWeight: tab === n.id ? 700 : 500,
+                fontSize: 14,
+                padding: '8px 18px',
+                borderRadius: 999,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                transition: 'all 0.15s',
+                lineHeight: 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+              }}
+            >
               {n.label}
             </button>
           ))}
         </nav>
       </header>
 
-      <div style={tab === 'chat' ? S.main : S.mainIngest}>
+      <div style={{
+        maxWidth: 880, margin: '0 auto',
+        padding: tab === 'chat' ? '0 44px' : '2rem 44px',
+        width: '100%', flex: 1,
+        display: 'flex', flexDirection: 'column',
+        boxSizing: 'border-box',
+      }}>
         {tab === 'chat' && <ChatPage />}
         {tab === 'ingest' && <IngestPage />}
       </div>
