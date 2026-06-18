@@ -133,6 +133,25 @@ export default function IngestPage() {
     }
   }
 
+  const fetchNlNewspaperBulk = async () => {
+    if (!window.confirm('국립중앙도서관 신문 아카이브를 일괄 수집합니다.\n한성순보·독립신문·동아일보·조선일보 등 근현대 주요 신문 25종\n체크포인트 지원 — 중단 후 재시작 가능\n시작하시겠습니까?')) return
+    try {
+      const res = await fetch('/api/ingest/fetch-nl-newspaper-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      const data = await res.json()
+      if (data.job_id) {
+        const r = await fetch('/api/ingest/jobs')
+        setJobs(await r.json())
+        startPolling()
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   return (
     <div>
       <h2 style={{ fontSize: '1.2rem', fontWeight: '500', color: '#2a1820', marginBottom: '0.3rem' }}>자료 입력</h2>
@@ -169,6 +188,22 @@ export default function IngestPage() {
           </button>
           <span style={{ color: '#8a7080', fontSize: '0.75rem' }}>
             위키문헌 — 소설 32편 + 시 34편 · 약 2~3분 소요
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button
+            onClick={fetchNlNewspaperBulk}
+            style={{
+              background: 'transparent', border: '1px solid #4a7a9a', color: '#4a7a9a',
+              borderRadius: '7px', padding: '0.6rem 1.4rem', cursor: 'pointer',
+              fontSize: '0.85rem', fontWeight: '600', letterSpacing: '0.04em',
+            }}
+          >
+            국중도 신문 일괄 수집
+          </button>
+          <span style={{ color: '#8a7080', fontSize: '0.75rem' }}>
+            근현대 주요 신문 25종 · 체크포인트 지원 · 중단 후 재시작 가능
           </span>
         </div>
       </div>

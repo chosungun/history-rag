@@ -2,9 +2,11 @@ import re
 import asyncio
 import json
 import os
+import hashlib
 import httpx
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+from xml.etree import ElementTree as ET
 
 CHECKPOINT_DIR = "/data/checkpoints"
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
@@ -927,4 +929,309 @@ async def crawl_magazine(
 
     _clear_checkpoint(ckpt_name)
     print(f"✅ {magazine_name} 수집 완료: {len(documents)}개 기사")
+    return documents
+
+
+# ── 국립중앙도서관 신문 아카이브 ────────────────────────────────────────
+
+_NL_SEARCH_URL = "https://www.nl.go.kr/NL/search/openApi/search.do"
+_NL_NEWSPAPER_DETAIL = "https://www.nl.go.kr/newspaper/detail.do"
+
+
+def _xml_text(el, tag: str) -> str:
+    """ElementTree 요소에서 태그 텍스트 안전 추출"""
+    child = el.find(tag)
+    return (child.text or "").strip() if child is not None else ""
+
+
+async def crawl_nl_newspaper(
+    keyword: str,
+    max_docs: int = 200,
+    on_progress=None,
+) -> list[dict]:
+    """
+    국립중앙도서관 open API → 신문(연속간행물) 카테고리 키워드 검색 후 메타데이터 수집
+    - text 필드: "{신문명} ({발행일}) - {제목}"  ← RAG 검색용 요약
+    - 원문 링크: https://www.nl.go.kr/newspaper/detail.do?id={controlNo}
+    """
+    from app.core.config import settings
+
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; history-rag/1.0)"}
+    documents = []
+    page = 1
+    page_size = 100
+    seen: set[str] = set()
+
+    async with httpx.AsyncClient(timeout=20, headers=headers) as client:
+        while True:
+            if max_docs > 0 and len(documents) >= max_docs:
+                break
+
+            params = {
+                "key": settings.nl_api_key,
+                "kwd": keyword,
+                "pageNum": str(page),
+                "pageSize": str(page_size),
+                "category": "신문",          # 연속간행물 중 신문만
+                "srchTarget": "all",
+                "sort": "date",
+            }
+
+            try:
+                resp = await client.get(_NL_SEARCH_URL, params=params)
+                resp.raise_for_status()
+            except Exception as e:
+                print(f"국중도 API 요청 실패 (p{page}): {e}")
+                break
+
+            # XML 파싱
+            try:
+                root = ET.fromstring(resp.content)
+            except ET.ParseError as e:
+                print(f"국중도 XML 파싱 실패 (p{page}): {e}")
+                break
+
+            items = root.findall(".//item")
+            if not items:
+                break
+
+            for item in items:
+                if max_docs > 0 and len(documents) >= max_docs:
+                    break
+
+                title = _xml_text(item, "title")
+                if not title:
+                    continue
+
+                control_no = _xml_text(item, "controlNo")
+                date_str   = _xml_text(item, "pubDate")
+                publisher  = _xml_text(item, "publisher")
+                link_str   = _xml_text(item, "link")
+
+                # 연도 추출
+                year_m = re.search(r"(\d{4})", date_str)
+                year = year_m.group(1) if year_m else ""
+
+                # 원문 링크: link 필드에 newspaper/detail.do 포함 시 우선 사용
+                if "newspaper/detail.do" in link_str:
+                    url = link_str
+                    # id 파라미터 추출
+                    id_m = re.search(r"[?&]id=([^&]+)", link_str)
+                    doc_key = id_m.group(1) if id_m else control_no
+                elif control_no:
+                    url = f"{_NL_NEWSPAPER_DETAIL}?id={control_no}"
+                    doc_key = control_no
+                else:
+                    doc_key = hashlib.md5(f"{title}{date_str}".encode()).hexdigest()[:12]
+                    url = _NL_SEARCH_URL
+
+                if doc_key in seen:
+                    continue
+                seen.add(doc_key)
+
+                # RAG text: 신문명 + 날짜 + 제목 요약
+                text_parts = []
+                if publisher:
+                    text_parts.append(publisher)
+                if date_str:
+                    text_parts.append(f"({date_str})")
+                text_parts.append(title)
+                text = " ".join(text_parts)
+
+                documents.append({
+                    "id": f"nl_newspaper_{doc_key}",
+                    "title": title,
+                    "text": text,
+                    "source": publisher or "국립중앙도서관 신문",
+                    "year": year,
+                    "url": url,
+                    "image_url": "",
+                    "category": "신문",
+                    "meta": {
+                        "publisher": publisher,
+                        "date": date_str,
+                        "controlNo": control_no,
+                    },
+                })
+
+                if on_progress:
+                    on_progress(len(documents))
+
+            # 페이지네이션 종료 판단
+            total_el = root.find(".//totalCount")
+            total = int(total_el.text or "0") if total_el is not None else 0
+            if total and page * page_size >= total:
+                break
+            if len(items) < page_size:
+                break
+
+            page += 1
+            await asyncio.sleep(0.5)
+
+    print(f"✅ 국중도 신문 수집 완료 [{keyword}]: {len(documents)}건")
+    return documents
+
+
+# 근현대 주요 신문 목록 (일괄 수집 대상)
+NL_NEWSPAPER_TITLES = [
+    # 개화기·대한제국
+    "한성순보", "한성주보", "독립신문", "황성신문",
+    "대한매일신보", "제국신문", "만세보", "대한민보",
+    "국민신보", "한성신보",
+    # 일제강점기 국내
+    "매일신보", "경성일보", "동아일보", "조선일보",
+    "시대일보", "중외일보", "조선중앙일보", "조선시보",
+    "부산일보",
+    # 재미 교포 신문
+    "공립신보", "신한민보",
+    # 해방 이후
+    "서울신문", "경향신문", "자유신문", "민족일보",
+]
+
+
+async def crawl_nl_newspaper_bulk(
+    max_docs: int = 0,
+    on_progress=None,
+) -> list[dict]:
+    """
+    국립중앙도서관 신문 아카이브 전체 일괄 수집
+    - NL_NEWSPAPER_TITLES 신문별 순회 + 페이지네이션
+    - checkpoint: nl_newspaper_bulk.json → {"done_papers": [...], "count": N}
+    - max_docs=0 이면 무제한
+    """
+    from app.core.config import settings
+
+    ckpt_name = "nl_newspaper_bulk"
+    ckpt = _load_checkpoint(ckpt_name)
+    done_papers: list[str] = ckpt.get("done_papers", []) if ckpt else []
+    total_count: int = ckpt.get("count", 0) if ckpt else 0
+    done_set = set(done_papers)
+
+    print(f"  체크포인트: {len(done_set)}/{len(NL_NEWSPAPER_TITLES)} 신문 이미 완료, 누계 {total_count}건")
+
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; history-rag/1.0)"}
+    documents = []
+    seen: set[str] = set()
+    page_size = 100
+
+    async with httpx.AsyncClient(timeout=20, headers=headers) as client:
+        for paper in NL_NEWSPAPER_TITLES:
+            if max_docs > 0 and (total_count + len(documents)) >= max_docs:
+                break
+            if paper in done_set:
+                continue
+
+            page = 1
+            paper_docs = 0
+            print(f"  [{paper}] 수집 시작")
+
+            while True:
+                if max_docs > 0 and (total_count + len(documents)) >= max_docs:
+                    break
+
+                params = {
+                    "key": settings.nl_api_key,
+                    "kwd": paper,
+                    "pageNum": str(page),
+                    "pageSize": str(page_size),
+                    "category": "신문",
+                    "srchTarget": "title",
+                    "sort": "date",
+                }
+
+                try:
+                    resp = await client.get(_NL_SEARCH_URL, params=params)
+                    resp.raise_for_status()
+                except Exception as e:
+                    print(f"    {paper} p{page} 요청 실패: {e}")
+                    break
+
+                try:
+                    root = ET.fromstring(resp.content)
+                except ET.ParseError as e:
+                    print(f"    {paper} p{page} XML 파싱 실패: {e}")
+                    break
+
+                items = root.findall(".//item")
+                if not items:
+                    break
+
+                for item in items:
+                    title = _xml_text(item, "title")
+                    if not title:
+                        continue
+
+                    control_no = _xml_text(item, "controlNo")
+                    date_str   = _xml_text(item, "pubDate")
+                    publisher  = _xml_text(item, "publisher")
+                    link_str   = _xml_text(item, "link")
+
+                    year_m = re.search(r"(\d{4})", date_str)
+                    year = year_m.group(1) if year_m else ""
+
+                    if "newspaper/detail.do" in link_str:
+                        url = link_str
+                        id_m = re.search(r"[?&]id=([^&]+)", link_str)
+                        doc_key = id_m.group(1) if id_m else control_no
+                    elif control_no:
+                        url = f"{_NL_NEWSPAPER_DETAIL}?id={control_no}"
+                        doc_key = control_no
+                    else:
+                        doc_key = hashlib.md5(f"{title}{date_str}".encode()).hexdigest()[:12]
+                        url = _NL_SEARCH_URL
+
+                    if doc_key in seen:
+                        continue
+                    seen.add(doc_key)
+
+                    text_parts = []
+                    if publisher:
+                        text_parts.append(publisher)
+                    if date_str:
+                        text_parts.append(f"({date_str})")
+                    text_parts.append(title)
+
+                    documents.append({
+                        "id": f"nl_newspaper_{doc_key}",
+                        "title": title,
+                        "text": " ".join(text_parts),
+                        "source": publisher or paper,
+                        "year": year,
+                        "url": url,
+                        "image_url": "",
+                        "category": "신문",
+                        "meta": {
+                            "publisher": publisher or paper,
+                            "date": date_str,
+                            "controlNo": control_no,
+                        },
+                    })
+                    paper_docs += 1
+
+                    if on_progress:
+                        on_progress(total_count + len(documents))
+
+                # 페이지네이션 종료
+                total_el = root.find(".//totalCount")
+                total_api = int(total_el.text or "0") if total_el is not None else 0
+                if total_api and page * page_size >= total_api:
+                    break
+                if len(items) < page_size:
+                    break
+
+                page += 1
+                await asyncio.sleep(0.4)
+
+            # 해당 신문 완료 → 체크포인트 저장
+            done_papers.append(paper)
+            done_set.add(paper)
+            _save_checkpoint(ckpt_name, {
+                "done_papers": done_papers,
+                "count": total_count + len(documents),
+            })
+            print(f"  [{paper}] 완료: {paper_docs}건")
+            await asyncio.sleep(0.5)
+
+    _clear_checkpoint(ckpt_name)
+    print(f"✅ 국중도 신문 일괄 수집 완료: {len(documents)}건")
     return documents

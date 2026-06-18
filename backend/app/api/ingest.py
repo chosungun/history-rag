@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from app.services.public_api import fetch_heritage_data
-from app.services.scraper import crawl_history_db_by_year, crawl_magazine, crawl_sequential, crawl_seoul_archive_photos, MAGAZINE_ITEMS, HISTORY_DB_ITEMS
+from app.services.scraper import crawl_history_db_by_year, crawl_magazine, crawl_sequential, crawl_seoul_archive_photos, crawl_nl_newspaper, crawl_nl_newspaper_bulk, NL_NEWSPAPER_TITLES, MAGAZINE_ITEMS, HISTORY_DB_ITEMS
 from app.services.wikisource_crawler import crawl_all_literature, NOVELS, POEMS
 from app.services.rag import ingest_documents
 import uuid
@@ -303,6 +303,62 @@ async def _do_ingest_magazine(mag_level_id: str, year_filter: list[str] | None, 
     try:
         _jobs[job_id]["phase"] = "크롤링 중"
         docs = await crawl_magazine(mag_level_id=mag_level_id, max_docs=max_docs, year_filter=year_filter, on_progress=on_progress)
+        _jobs[job_id]["collected"] = len(docs)
+        if docs:
+            _jobs[job_id]["phase"] = "DB 저장 중"
+            count = await ingest_documents(docs)
+            _finish_job(job_id, count)
+        else:
+            _finish_job(job_id, 0)
+    except Exception as e:
+        _fail_job(job_id, str(e))
+
+
+# ── 국립중앙도서관 신문 아카이브 ────────────────────────────────────────
+
+class NlNewspaperRequest(BaseModel):
+    keyword: str
+    max_docs: int = 200
+
+
+@router.post("/fetch-nl-newspaper")
+async def ingest_nl_newspaper(req: NlNewspaperRequest, background_tasks: BackgroundTasks):
+    """국립중앙도서관 신문 아카이브 키워드 수집"""
+    job_id = _new_job(f"국중도 신문: {req.keyword}", req.max_docs)
+    background_tasks.add_task(_do_ingest_nl_newspaper, req.keyword, req.max_docs, job_id)
+    return {"message": f"'{req.keyword}' 신문 수집을 시작합니다. 최대 {req.max_docs}건.", "job_id": job_id}
+
+
+async def _do_ingest_nl_newspaper(keyword: str, max_docs: int, job_id: str):
+    def on_progress(n): _jobs[job_id]["collected"] = n
+    try:
+        _jobs[job_id]["phase"] = "크롤링 중"
+        docs = await crawl_nl_newspaper(keyword=keyword, max_docs=max_docs, on_progress=on_progress)
+        _jobs[job_id]["collected"] = len(docs)
+        if docs:
+            _jobs[job_id]["phase"] = "DB 저장 중"
+            count = await ingest_documents(docs)
+            _finish_job(job_id, count)
+        else:
+            _finish_job(job_id, 0)
+    except Exception as e:
+        _fail_job(job_id, str(e))
+
+
+@router.post("/fetch-nl-newspaper-bulk")
+async def ingest_nl_newspaper_bulk(background_tasks: BackgroundTasks):
+    """국립중앙도서관 신문 아카이브 전체 일괄 수집 (체크포인트 지원)"""
+    total = len(NL_NEWSPAPER_TITLES)
+    job_id = _new_job(f"국중도 신문 일괄 ({total}종)", 0)
+    background_tasks.add_task(_do_ingest_nl_newspaper_bulk, job_id)
+    return {"message": f"국중도 신문 {total}종 일괄 수집을 시작합니다.", "job_id": job_id}
+
+
+async def _do_ingest_nl_newspaper_bulk(job_id: str):
+    def on_progress(n): _jobs[job_id]["collected"] = n
+    try:
+        _jobs[job_id]["phase"] = "크롤링 중"
+        docs = await crawl_nl_newspaper_bulk(max_docs=0, on_progress=on_progress)
         _jobs[job_id]["collected"] = len(docs)
         if docs:
             _jobs[job_id]["phase"] = "DB 저장 중"
