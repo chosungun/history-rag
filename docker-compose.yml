@@ -15,6 +15,7 @@ services:
       - PUBLIC_DATA_API_KEY=${PUBLIC_DATA_API_KEY}
       - GONGU_API_KEY=${GONGU_API_KEY}
       - HGIS_API_KEY=${HGIS_API_KEY}
+      - NL_API_KEY=${NL_API_KEY}
       - CHROMA_PATH=/chroma_data
       - DATA_PATH=/data
     depends_on:

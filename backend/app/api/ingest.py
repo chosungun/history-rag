@@ -2,6 +2,7 @@ from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from app.services.public_api import fetch_heritage_data
 from app.services.scraper import crawl_history_db_by_year, crawl_magazine, crawl_sequential, crawl_seoul_archive_photos, MAGAZINE_ITEMS, HISTORY_DB_ITEMS
+from app.services.wikisource_crawler import crawl_all_literature, NOVELS, POEMS
 from app.services.rag import ingest_documents
 import uuid
 import time
@@ -49,6 +50,17 @@ def _fail_job(job_id: str, error: str):
         j["phase"] = "오류"
         j["error"] = error
         j["finished_at"] = time.time()
+
+
+@router.get("/db-count")
+async def db_count():
+    """ChromaDB 현재 문서 수 조회"""
+    from app.core.chroma import get_collection
+    try:
+        count = get_collection().count()
+        return {"count": count}
+    except Exception:
+        return {"count": 0}
 
 
 @router.get("/jobs")
@@ -296,6 +308,32 @@ async def _do_ingest_magazine(mag_level_id: str, year_filter: list[str] | None, 
             _jobs[job_id]["phase"] = "DB 저장 중"
             count = await ingest_documents(docs)
             _finish_job(job_id, count)
+        else:
+            _finish_job(job_id, 0)
+    except Exception as e:
+        _fail_job(job_id, str(e))
+
+
+# ── 위키문헌 근대문학 ────────────────────────────────────────────────
+
+@router.post("/fetch-literature")
+async def ingest_literature(background_tasks: BackgroundTasks):
+    """위키문헌 근대문학 전체 수집 (소설 + 시)"""
+    total = len(NOVELS) + len(POEMS)
+    job_id = _new_job(f"위키문헌 근대문학 (소설 {len(NOVELS)}편 + 시 {len(POEMS)}편)", total)
+    background_tasks.add_task(_do_ingest_literature, job_id)
+    return {"message": f"근대문학 {total}작품 수집을 시작합니다.", "job_id": job_id}
+
+
+async def _do_ingest_literature(job_id: str):
+    def on_progress(n): _jobs[job_id]["collected"] = n
+    try:
+        _jobs[job_id]["phase"] = "크롤링 중"
+        docs = await crawl_all_literature(on_progress=on_progress)
+        _jobs[job_id]["collected"] = len(docs)
+        if docs:
+            _jobs[job_id]["phase"] = "DB 저장 중"
+            _finish_job(job_id, await ingest_documents(docs))
         else:
             _finish_job(job_id, 0)
     except Exception as e:

@@ -118,6 +118,21 @@ export default function IngestPage() {
     }
   }
 
+  const fetchLiterature = async () => {
+    if (!window.confirm('위키문헌 근대문학을 수집합니다.\n소설 32편 + 시 34편 (총 66작품)\n약 2~3분 소요됩니다.\n시작하시겠습니까?')) return
+    try {
+      const res = await fetch('/api/ingest/fetch-literature', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      const data = await res.json()
+      if (data.job_id) {
+        const r = await fetch('/api/ingest/jobs')
+        setJobs(await r.json())
+        startPolling()
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   return (
     <div>
       <h2 style={{ fontSize: '1.2rem', fontWeight: '500', color: '#2a1820', marginBottom: '0.3rem' }}>자료 입력</h2>
@@ -125,20 +140,37 @@ export default function IngestPage() {
 
       <JobsPanel jobs={jobs} />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <button
-          onClick={fetchAll}
-          style={{
-            background: 'transparent', border: '1px solid #c94470', color: '#c94470',
-            borderRadius: '7px', padding: '0.6rem 1.4rem', cursor: 'pointer',
-            fontSize: '0.85rem', fontWeight: '600', letterSpacing: '0.04em',
-          }}
-        >
-          전체 일괄 수집 시작
-        </button>
-        <span style={{ color: '#8a7080', fontSize: '0.75rem' }}>
-          신문 제외 전체 — 잡지 13종 + 관보 + 민족운동·문서류 22종 · 순차 실행 · 수 시간 소요
-        </span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button
+            onClick={fetchAll}
+            style={{
+              background: 'transparent', border: '1px solid #c94470', color: '#c94470',
+              borderRadius: '7px', padding: '0.6rem 1.4rem', cursor: 'pointer',
+              fontSize: '0.85rem', fontWeight: '600', letterSpacing: '0.04em',
+            }}
+          >
+            전체 일괄 수집 시작
+          </button>
+          <span style={{ color: '#8a7080', fontSize: '0.75rem' }}>
+            신문 제외 전체 — 잡지 13종 + 관보 + 민족운동·문서류 22종 · 순차 실행 · 수 시간 소요
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button
+            onClick={fetchLiterature}
+            style={{
+              background: 'transparent', border: '1px solid #7a6aa0', color: '#7a6aa0',
+              borderRadius: '7px', padding: '0.6rem 1.4rem', cursor: 'pointer',
+              fontSize: '0.85rem', fontWeight: '600', letterSpacing: '0.04em',
+            }}
+          >
+            근대문학 수집
+          </button>
+          <span style={{ color: '#8a7080', fontSize: '0.75rem' }}>
+            위키문헌 — 소설 32편 + 시 34편 · 약 2~3분 소요
+          </span>
+        </div>
       </div>
     </div>
   )

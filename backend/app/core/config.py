@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     gongu_api_key: str = ""
     independence_api_key: str = ""
     hgis_api_key: str = ""
+    nl_api_key: str = ""
     chroma_path: str = "/chroma_data"
     data_path: str = "/data"
     embed_model: str = "paraphrase-multilingual-mpnet-base-v2"

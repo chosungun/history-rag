@@ -24,24 +24,54 @@ async def fetch_gongu_photos(keyword: str, page: int = 1, per_page: int = 12) ->
 
 # 한국어 장소/키워드 → Wikimedia Commons 검색어 매핑
 _PLACE_MAP = {
-    '조선호텔': 'Chosun Hotel Seoul',
-    '경성': 'Keijo Korea',
-    '명동': 'Honmachi Keijo Korea',
-    '혼마치': 'Honmachi Korea',
-    '종로': 'Jongno Korea colonial',
-    '남대문': 'Namdaemun Gate Seoul',
-    '동대문': 'Dongdaemun Gate Seoul',
-    '덕수궁': 'Deoksugung Palace Korea',
-    '경복궁': 'Gyeongbokgung Palace Korea',
-    '조선총독부': 'Government General Korea building',
-    '한강': 'Han River Korea colonial',
-    '북촌': 'Bukchon Korea',
-    '인천': 'Incheon Korea colonial',
-    '부산': 'Busan Korea colonial',
-    '평양': 'Pyongyang Korea colonial',
+    # 건물/시설
+    '조선호텔': 'Chosun Hotel Seoul 1920s',
+    '경성역': 'Gyeongseong Station Seoul 1925',
+    '미쓰코시': 'Mitsukoshi department store Keijo',
+    '화신백화점': 'Hwashin department store Seoul colonial',
+    '경성부청': 'Keijo Prefecture Office colonial',
+    '조선총독부': 'Government General Building Korea colonial',
+    '경성우편국': 'Keijo post office colonial Korea',
+    '한국은행': 'Bank of Joseon Seoul colonial',
+    '경성재판소': 'Keijo court colonial Korea',
+    # 장소/거리
+    '경성': 'Keijo Seoul 1920s colonial Korea',
+    '명동': 'Honmachi Keijo 1930s',
+    '혼마치': 'Honmachi Seoul colonial street',
+    '종로': 'Jongno Seoul colonial 1920s',
+    '북촌': 'Bukchon hanok Seoul colonial',
+    '남대문': 'Namdaemun Gate Seoul 1920s',
+    '동대문': 'Dongdaemun Gate Seoul colonial',
+    '광화문': 'Gwanghwamun Gate Seoul 1920s',
+    '덕수궁': 'Deoksugung Palace Seoul colonial',
+    '경복궁': 'Gyeongbokgung Palace Korea colonial',
+    '남산': 'Namsan Seoul colonial 1920s',
+    '한강': 'Han River Seoul colonial',
+    '인천': 'Incheon Korea colonial 1920s',
+    '부산': 'Busan Korea colonial 1920s',
+    '평양': 'Pyongyang Korea colonial 1920s',
     '개성': 'Kaesong Korea colonial',
-    '기생': 'Gisaeng Korea',
-    '독립문': 'Independence Gate Korea',
+    # 인물/계층
+    '기생': 'Gisaeng Korean entertainer colonial',
+    '모던걸': 'modern girl Korea 1930s fashion',
+    '모던보이': 'modern boy Korea 1930s fashion',
+    '신여성': 'new woman Korea 1920s',
+    '인력거': 'rickshaw Seoul Korea colonial',
+    # 사건/운동
+    '독립운동': 'Korean independence movement 1919',
+    '의열단': 'Uiyeoldan Korean independence',
+    '3·1운동': 'March First Movement 1919 Korea',
+    '만세운동': 'Mansei demonstration Korea 1919',
+    # 생활/복식
+    '한복': 'hanbok traditional Korean dress colonial',
+    '전차': 'tram streetcar Seoul colonial 1920s',
+    '기차': 'railway train Korea colonial 1920s',
+    '시장': 'market Seoul Korea colonial',
+    '농촌': 'Korean rural village colonial',
+    '학교': 'school Korea colonial education',
+    '병원': 'hospital Korea colonial medical',
+    '카페': 'cafe coffee house Korea 1930s',
+    '술집': 'tavern bar Korea colonial',
 }
 
 
@@ -66,7 +96,7 @@ async def fetch_wikimedia_photos(query: str, limit: int = 12) -> list[dict]:
                 "action": "query",
                 "generator": "search",
                 "gsrsearch": search_query,
-                "gsrnamespace": "6",  # File 네임스페이스
+                "gsrnamespace": "6",
                 "gsrlimit": limit,
                 "prop": "imageinfo",
                 "iiprop": "url|thumburl|extmetadata",
@@ -81,7 +111,7 @@ async def fetch_wikimedia_photos(query: str, limit: int = 12) -> list[dict]:
     photos = []
     pages = data.get("query", {}).get("pages", {})
     for page_id, page in pages.items():
-        if int(page_id) < 0:  # missing pages
+        if int(page_id) < 0:
             continue
         infos = page.get("imageinfo", [])
         if not infos:
@@ -92,11 +122,16 @@ async def fetch_wikimedia_photos(query: str, limit: int = 12) -> list[dict]:
         if not thumb and not original:
             continue
 
-        # 설명/날짜 메타데이터 추출
         meta = info.get("extmetadata", {})
-        date_str = meta.get("DateTimeOriginal", {}).get("value", "") or meta.get("DateTime", {}).get("value", "")
+        date_str = (meta.get("DateTimeOriginal", {}).get("value", "")
+                    or meta.get("DateTime", {}).get("value", ""))
         year = date_str[:4] if date_str and date_str[:4].isdigit() else ""
         title = page.get("title", "").replace("File:", "")
+
+        # 관련없는 파일 필터링
+        lower_title = title.lower()
+        if any(x in lower_title for x in ['diagram', 'map', 'flag', 'logo', 'icon', 'chart']):
+            continue
 
         photos.append({
             "id": f"wiki_{page_id}",
@@ -106,10 +141,10 @@ async def fetch_wikimedia_photos(query: str, limit: int = 12) -> list[dict]:
             "original": original,
             "source": "Wikimedia Commons",
             "license": meta.get("LicenseShortName", {}).get("value", "CC"),
-            "url": f"https://commons.wikimedia.org/wiki/{page.get('title', '').replace(' ', '_')}",
+            "url": f"https://commons.wikimedia.org/wiki/{page.get('title','').replace(' ','_')}",
         })
 
-    return photos
+    return photos[:limit]
 
 
 async def fetch_korean_wikipedia(keyword: str, limit: int = 5) -> list[dict]:

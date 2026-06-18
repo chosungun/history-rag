@@ -2,7 +2,7 @@ import re
 import asyncio
 from fastapi import APIRouter
 from pydantic import BaseModel
-from app.services.rag import rag_chat
+from app.services.rag import rag_chat, ingest_documents
 from app.services.public_api import (
     fetch_gongu_photos, fetch_emuseum_photos,
     fetch_seoul_archive_photos, fetch_wikimedia_photos,
@@ -109,6 +109,23 @@ async def _fetch_photos(query: str) -> list[dict]:
         add(emuseum_photos if not isinstance(emuseum_photos, Exception) else [])
         add(_parse_gongu(gongu_data))
         add(wiki_photos if not isinstance(wiki_photos, Exception) else [])
+
+        # 서울아카이브 사진 설명 텍스트 → ChromaDB 자동 적재
+        if not isinstance(seoul_photos, Exception):
+            seoul_docs = [
+                {
+                    "id": f"seoul_desc_{p['id']}",
+                    "text": p["description"],
+                    "source": p["source"],
+                    "year": p["year"],
+                    "url": p["url"],
+                    "image_url": p["thumbnail"],
+                    "category": "서울역사아카이브",
+                }
+                for p in (seoul_photos or []) if p.get("description")
+            ]
+            if seoul_docs:
+                await ingest_documents(seoul_docs)
 
         # 3장 미달 → 폴백 검색
         if len(photos) < 3:
