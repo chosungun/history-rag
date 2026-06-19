@@ -2,7 +2,7 @@ import re
 import asyncio
 from fastapi import APIRouter
 from pydantic import BaseModel
-from app.services.rag import rag_chat, ingest_documents
+from app.services.rag import rag_chat, ingest_documents, search_photos_chroma
 from app.services.public_api import (
     fetch_gongu_photos, fetch_emuseum_photos,
     fetch_seoul_archive_photos, fetch_wikimedia_photos,
@@ -87,13 +87,14 @@ def _fallback_query(query: str) -> str:
 
 
 async def _fetch_photos(query: str) -> list[dict]:
-    """공유마당 + 서울아카이브 + Wikimedia 병렬, 3장 미달 시 폴백"""
+    """공유마당 + 서울아카이브(실시간+ChromaDB) + Wikimedia 병렬, 3장 미달 시 폴백"""
     try:
-        gongu_data, emuseum_photos, seoul_photos, wiki_photos = await asyncio.gather(
+        gongu_data, emuseum_photos, seoul_photos, wiki_photos, chroma_photos = await asyncio.gather(
             fetch_gongu_photos(query, page=1, per_page=10),
             fetch_emuseum_photos(query, page=1, limit=4),
             fetch_seoul_archive_photos(query, limit=10),
             fetch_wikimedia_photos(query, limit=8),
+            search_photos_chroma(query, top_k=8),
             return_exceptions=True,
         )
 
@@ -110,11 +111,13 @@ async def _fetch_photos(query: str) -> list[dict]:
         _seoul = seoul_photos if not isinstance(seoul_photos, Exception) else []
         _gongu = _parse_gongu(gongu_data)
         _wiki = wiki_photos if not isinstance(wiki_photos, Exception) else []
-        print(f"[photo] seoul={len(_seoul)} gongu={len(_gongu)} wiki={len(_wiki)}"
+        _chroma = chroma_photos if not isinstance(chroma_photos, Exception) else []
+        print(f"[photo] seoul={len(_seoul)} chroma={len(_chroma)} gongu={len(_gongu)} wiki={len(_wiki)}"
               + (f" seoul_err={seoul_photos}" if isinstance(seoul_photos, Exception) else "")
-              + (f" gongu_err={gongu_data}" if isinstance(gongu_data, Exception) else ""))
+              + (f" chroma_err={chroma_photos}" if isinstance(chroma_photos, Exception) else ""))
 
         add(_seoul)
+        add(_chroma)   # ChromaDB 유사도 검색 결과 (연대·카테고리 필터 적용)
         add(emuseum_photos if not isinstance(emuseum_photos, Exception) else [])
         add(_gongu)
         add(_wiki)

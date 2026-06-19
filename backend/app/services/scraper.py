@@ -262,6 +262,47 @@ _SEOUL_CATEGORY_MAP = {
 
 _SEOUL_DEFAULT_CATEGORY = 'CTGRY807'  # 기본값: 도시경관 (범용적)
 
+_anthropic_client = None
+
+
+def _get_anthropic_client():
+    global _anthropic_client
+    if _anthropic_client is None:
+        from anthropic import AsyncAnthropic
+        from app.core.config import settings
+        _anthropic_client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    return _anthropic_client
+
+
+async def _enrich_photo_text(title: str, period: str, place: str, content: str) -> str:
+    """Claude Haiku로 사진 메타데이터를 검색 키워드로 보강. 실패 시 기본 조합 반환."""
+    parts = [p for p in [title, period, place, content] if p]
+    fallback = " | ".join(parts)
+    if not parts:
+        return ""
+
+    meta = "\n".join(
+        f"{k}: {v}" for k, v in [
+            ("명칭", title), ("시기", period), ("장소", place), ("내용", content)
+        ] if v
+    )
+    try:
+        client = _get_anthropic_client()
+        resp = await client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=100,
+            messages=[{"role": "user", "content": (
+                "서울역사아카이브 사진 메타데이터에서 검색 키워드를 보강해줘. "
+                "건물명·장소·연도·건축양식·용도·시대 맥락을 쉼표로 나열. "
+                "60단어 이내, 한국어만, 키워드만 출력.\n\n" + meta
+            )}],
+        )
+        enriched = resp.content[0].text.strip()
+        return f"{title}, {enriched}" if title and title not in enriched else enriched
+    except Exception as e:
+        print(f"Claude 텍스트 보강 실패 ({title}): {e}")
+        return fallback
+
 
 def get_category_for_keyword(query: str) -> str:
     """질문에서 가장 관련있는 카테고리 ID 반환"""
@@ -444,8 +485,10 @@ async def scrape_seoul_history_photos(keyword: str, limit: int = 12) -> list[dic
     return photos
 
 
-async def crawl_seoul_archive_photos(on_progress=None) -> list[dict]:
-    """서울역사아카이브 근현대서울사진 26개 카테고리 전체 크롤링 → ChromaDB 문서로 변환"""
+async def crawl_seoul_archive_photos(on_progress=None, enrich: bool = False) -> list[dict]:
+    """서울역사아카이브 근현대서울사진 전체 카테고리 크롤링 → ChromaDB 문서로 변환
+    enrich=True 시 Claude Haiku로 text 키워드 보강 (수집 속도 느려짐)
+    """
     headers = {"User-Agent": "Mozilla/5.0 (compatible; history-rag/1.0)"}
     documents = []
     seen_ids: set[str] = set()
@@ -493,9 +536,17 @@ async def crawl_seoul_archive_photos(on_progress=None) -> list[dict]:
                             detail = None
 
                         if detail:
+                            if enrich:
+                                text = await _enrich_photo_text(
+                                    detail["title"], detail["period"],
+                                    detail["place"], detail["content"],
+                                )
+                            else:
+                                text = detail["text"]
                             documents.append({
                                 "id": f"seoul_archive_{file_id}",
-                                "text": detail["text"],
+                                "title": detail["title"],
+                                "text": text,
                                 "source": "서울역사아카이브 근현대서울사진",
                                 "year": detail["year"],
                                 "url": detail_url,
@@ -506,6 +557,7 @@ async def crawl_seoul_archive_photos(on_progress=None) -> list[dict]:
                             title = alt or file_id
                             documents.append({
                                 "id": f"seoul_archive_{file_id}",
+                                "title": title,
                                 "text": title,
                                 "source": "서울역사아카이브 근현대서울사진",
                                 "year": "",

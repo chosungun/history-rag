@@ -183,6 +183,89 @@ async def rag_chat(query: str, history: list[dict], top_k: int = 5, include_news
     }
 
 
+async def search_photos_chroma(query: str, top_k: int = 6) -> list[dict]:
+    """ChromaDB에 저장된 서울아카이브 사진을 벡터 검색으로 반환.
+    연도가 쿼리에 있으면 해당 연대로 먼저 필터링하고, 결과 없으면 카테고리 필터만으로 재시도.
+    """
+    collection = get_collection()
+    if collection.count() == 0:
+        return []
+
+    year_m = re.search(r'(19[1-4]\d)', query)
+    year = year_m.group(1) if year_m else None
+
+    cat_filter = {"$or": [
+        {"category": {"$eq": "근현대서울사진"}},
+        {"category": {"$eq": "서울역사아카이브"}},
+    ]}
+
+    where_candidates: list[dict] = []
+    if year:
+        decade = (int(year) // 10) * 10
+        where_candidates.append({"$and": [
+            cat_filter,
+            {"year": {"$gte": str(decade)}},
+            {"year": {"$lte": str(decade + 9)}},
+        ]})
+    where_candidates.append(cat_filter)
+
+    query_emb = embed([query])[0]
+    raw = None
+
+    for w in where_candidates:
+        try:
+            raw = collection.query(
+                query_embeddings=[query_emb],
+                n_results=top_k,
+                where=w,
+                include=["documents", "metadatas", "distances"],
+            )
+            if raw["ids"][0]:
+                break
+            raw = None
+        except Exception:
+            # n_results가 실제 문서 수보다 크면 에러 — 1건으로 재시도
+            try:
+                raw = collection.query(
+                    query_embeddings=[query_emb],
+                    n_results=1,
+                    where=w,
+                    include=["documents", "metadatas", "distances"],
+                )
+                if raw["ids"][0]:
+                    break
+                raw = None
+            except Exception:
+                raw = None
+
+    if not raw:
+        return []
+
+    photos = []
+    for doc_id, doc, meta, dist in zip(
+        raw["ids"][0], raw["documents"][0],
+        raw["metadatas"][0], raw["distances"][0],
+    ):
+        img = meta.get("image_url", "")
+        if not img:
+            continue
+        title = (
+            meta.get("title")
+            or (doc.split("|")[0].strip() if "|" in doc else doc.split(",")[0].strip())
+        )[:60]
+        photos.append({
+            "id": doc_id,
+            "title": title,
+            "year": meta.get("year", ""),
+            "thumbnail": img,
+            "original": img,
+            "source": meta.get("source", "서울역사아카이브"),
+            "license": "공공누리 제1유형",
+            "url": meta.get("url", ""),
+        })
+    return photos
+
+
 async def ingest_documents(documents: list[dict]) -> int:
     """문서를 ChromaDB에 임베딩하여 저장"""
     collection = get_collection()
@@ -204,6 +287,7 @@ async def ingest_documents(documents: list[dict]) -> int:
             "url": d.get("url", ""),
             "image_url": d.get("image_url", ""),
             "category": d.get("category", ""),
+            "title": d.get("title", ""),
         } for d in documents]
     )
     return len(documents)
