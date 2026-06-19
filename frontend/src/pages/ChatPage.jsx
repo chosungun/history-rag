@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, Suspense, lazy } from 'react'
+import React, { useState, useRef, useEffect, Suspense, lazy, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -38,10 +38,36 @@ function AiAvatar() {
   )
 }
 
-/* ─── [ref:N] → Markdown 링크 전처리 ─── */
-function preprocessCitations(text) {
-  return text.replace(/\[ref:\s*(\d+)\]/g, '[[ref:$1]](ref:$1)')
+/* ─── rehype 플러그인: HAST 텍스트 노드 내 [ref:N] → <cite>N</cite> ─── */
+const rehypeCitations = () => (tree) => {
+  const walk = (node) => {
+    if (!node.children) return
+    let i = 0
+    while (i < node.children.length) {
+      const child = node.children[i]
+      if (child.type === 'text' && /\[ref:\s*\d+\]/.test(child.value)) {
+        const parts = []
+        const pat = /\[ref:\s*(\d+)\]/g
+        let last = 0, m
+        while ((m = pat.exec(child.value)) !== null) {
+          if (m.index > last) parts.push({ type: 'text', value: child.value.slice(last, m.index) })
+          parts.push({ type: 'element', tagName: 'cite', properties: {}, children: [{ type: 'text', value: m[1] }] })
+          last = m.index + m[0].length
+        }
+        if (last < child.value.length) parts.push({ type: 'text', value: child.value.slice(last) })
+        node.children.splice(i, 1, ...parts)
+        i += parts.length
+      } else {
+        walk(child)
+        i++
+      }
+    }
+  }
+  walk(tree)
 }
+
+const REMARK_PLUGINS = [remarkGfm]
+const REHYPE_PLUGINS = [rehypeCitations]
 
 /* ─── 인용 뱃지 ─── */
 function CitationBadge({ source }) {
@@ -57,17 +83,18 @@ function CitationBadge({ source }) {
         onClick={() => source.url && window.open(source.url, '_blank', 'noreferrer')}
         style={{
           display: 'inline-block',
-          background: '#f9e0e8',
+          background: '#fce8ef',
           color: '#c94470',
           borderRadius: 999,
           fontSize: 11,
           fontWeight: 600,
           padding: '2px 8px',
-          cursor: source.url ? 'pointer' : 'default',
+          cursor: 'pointer',
           lineHeight: 1.5,
           border: '1px solid #f0c4d4',
           whiteSpace: 'nowrap',
           userSelect: 'none',
+          margin: '0 2px',
         }}
       >
         {label}
@@ -311,8 +338,40 @@ function UserBubble({ content }) {
 }
 
 /* ─── AI 말풍선 ─── */
-function AiBubble({ content, photos, sources, coords, showMap, query }) {
-  const processedContent = preprocessCitations(content)
+const AiBubble = React.memo(function AiBubble({ content, photos, sources, coords, showMap, query }) {
+  const mdComponents = useMemo(() => ({
+    p: ({ children }) => <p style={{ margin: '0 0 0.75em' }}>{children}</p>,
+    strong: ({ children }) => <strong style={{ color: '#C16A82', fontWeight: 700 }}>{children}</strong>,
+    del: ({ children }) => <span style={{ color: '#ABA4A6', fontStyle: 'normal', textDecoration: 'none' }}>{children}</span>,
+    h1: ({ children }) => <h1 style={{ color: '#574349', fontSize: '1.1rem', margin: '0.75em 0 0.4em', fontWeight: 700 }}>{children}</h1>,
+    h2: ({ children }) => <h2 style={{ color: '#574349', fontSize: '1rem', margin: '0.75em 0 0.4em', fontWeight: 700 }}>{children}</h2>,
+    h3: ({ children }) => <h3 style={{ color: '#C16A82', fontSize: '0.95rem', margin: '0.5em 0 0.3em', fontWeight: 700 }}>{children}</h3>,
+    ul: ({ children }) => <ul style={{ paddingLeft: '1.25em', margin: '0.4em 0' }}>{children}</ul>,
+    ol: ({ children }) => <ol style={{ paddingLeft: '1.25em', margin: '0.4em 0' }}>{children}</ol>,
+    li: ({ children }) => <li style={{ marginBottom: '0.2em' }}>{children}</li>,
+    code: ({ children }) => <code style={{ background: '#FFF5F8', color: '#C16A82', padding: '0.1em 0.3em', borderRadius: 3, fontSize: '0.85em' }}>{children}</code>,
+    table: ({ children }) => <table style={{ borderCollapse: 'collapse', width: '100%', margin: '0.5em 0', fontSize: '0.85rem' }}>{children}</table>,
+    th: ({ children }) => <th style={{ border: '1px solid #F0E3E0', padding: '0.4em 0.75em', background: '#FFF5F8', color: '#C16A82', textAlign: 'left' }}>{children}</th>,
+    td: ({ children }) => <td style={{ border: '1px solid #F0E3E0', padding: '0.4em 0.75em', color: '#4c4145' }}>{children}</td>,
+    hr: () => (
+      <div style={{
+        height: 2, margin: '18px 0',
+        background: 'radial-gradient(circle, #E7CFD5 1px, transparent 1.4px) repeat-x',
+        backgroundSize: '9px 2px',
+        WebkitMask: 'linear-gradient(90deg,transparent,#000 20%,#000 80%,transparent)',
+        mask: 'linear-gradient(90deg,transparent,#000 20%,#000 80%,transparent)',
+      }} />
+    ),
+    a: ({ href, children }) => (
+      <a href={href} target="_blank" rel="noreferrer" style={{ color: '#a060c8' }}>{children}</a>
+    ),
+    cite: ({ children }) => {
+      const text = Array.isArray(children) ? children.join('') : String(children ?? '')
+      const n = parseInt(text, 10) - 1
+      const src = sources?.[n]
+      return src ? <CitationBadge source={src} /> : null
+    },
+  }), [sources])
 
   return (
     <div style={{ display: 'flex', gap: 13, alignItems: 'flex-start' }}>
@@ -329,39 +388,12 @@ function AiBubble({ content, photos, sources, coords, showMap, query }) {
         <TrustLegend />
 
         <div style={{ color: '#4c4145', fontSize: 15, lineHeight: 1.75, wordBreak: 'break-word' }}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
-            p: ({ children }) => <p style={{ margin: '0 0 0.75em' }}>{children}</p>,
-            strong: ({ children }) => <strong style={{ color: '#C16A82', fontWeight: 700 }}>{children}</strong>,
-            del: ({ children }) => <span style={{ color: '#ABA4A6', fontStyle: 'normal', textDecoration: 'none' }}>{children}</span>,
-            h1: ({ children }) => <h1 style={{ color: '#574349', fontSize: '1.1rem', margin: '0.75em 0 0.4em', fontWeight: 700 }}>{children}</h1>,
-            h2: ({ children }) => <h2 style={{ color: '#574349', fontSize: '1rem', margin: '0.75em 0 0.4em', fontWeight: 700 }}>{children}</h2>,
-            h3: ({ children }) => <h3 style={{ color: '#C16A82', fontSize: '0.95rem', margin: '0.5em 0 0.3em', fontWeight: 700 }}>{children}</h3>,
-            ul: ({ children }) => <ul style={{ paddingLeft: '1.25em', margin: '0.4em 0' }}>{children}</ul>,
-            ol: ({ children }) => <ol style={{ paddingLeft: '1.25em', margin: '0.4em 0' }}>{children}</ol>,
-            li: ({ children }) => <li style={{ marginBottom: '0.2em' }}>{children}</li>,
-            code: ({ children }) => <code style={{ background: '#FFF5F8', color: '#C16A82', padding: '0.1em 0.3em', borderRadius: 3, fontSize: '0.85em' }}>{children}</code>,
-            table: ({ children }) => <table style={{ borderCollapse: 'collapse', width: '100%', margin: '0.5em 0', fontSize: '0.85rem' }}>{children}</table>,
-            th: ({ children }) => <th style={{ border: '1px solid #F0E3E0', padding: '0.4em 0.75em', background: '#FFF5F8', color: '#C16A82', textAlign: 'left' }}>{children}</th>,
-            td: ({ children }) => <td style={{ border: '1px solid #F0E3E0', padding: '0.4em 0.75em', color: '#4c4145' }}>{children}</td>,
-            hr: () => (
-              <div style={{
-                height: 2, margin: '18px 0',
-                background: 'radial-gradient(circle, #E7CFD5 1px, transparent 1.4px) repeat-x',
-                backgroundSize: '9px 2px',
-                WebkitMask: 'linear-gradient(90deg,transparent,#000 20%,#000 80%,transparent)',
-                mask: 'linear-gradient(90deg,transparent,#000 20%,#000 80%,transparent)',
-              }} />
-            ),
-            a: ({ href, children }) => {
-              if (href?.startsWith('ref:')) {
-                const n = parseInt(href.slice(4), 10) - 1
-                const src = sources?.[n]
-                return src ? <CitationBadge source={src} /> : null
-              }
-              return <a href={href} target="_blank" rel="noreferrer" style={{ color: '#a060c8' }}>{children}</a>
-            },
-          }}>
-            {processedContent}
+          <ReactMarkdown
+            remarkPlugins={REMARK_PLUGINS}
+            rehypePlugins={REHYPE_PLUGINS}
+            components={mdComponents}
+          >
+            {content}
           </ReactMarkdown>
         </div>
 
@@ -375,7 +407,7 @@ function AiBubble({ content, photos, sources, coords, showMap, query }) {
       </div>
     </div>
   )
-}
+})
 
 /* ─── 로딩 말풍선 ─── */
 function LoadingBubble() {
