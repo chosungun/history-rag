@@ -47,6 +47,7 @@ SEOUL_PHOTO_CATEGORIES = [
     # 보건의료
     "CTGRY816",  # 병원/의료 (세브란스, 총독부의원)
     # 사회생활
+    "CTGRY817",  # 사회생활 (상위 카테고리 — 104건)
     "CTGRY818",  # 종교신앙 (무당, 장승, 성황당)
     "CTGRY819",  # 인물도감 (양반, 조선풍속, 기생)
     "CTGRY820",  # 조선신궁
@@ -55,6 +56,7 @@ SEOUL_PHOTO_CATEGORIES = [
     "CTGRY823",  # 교육시설 (경성제대, 이화학당, 서당)
     "CTGRY824",  # 학교생활
     # 문화예술
+    "CTGRY825",  # 문화예술 (상위 카테고리 — 136건)
     "CTGRY826",  # 기생 (검무, 승무, 기생학교)
     "CTGRY827",  # 동식물원 (창경원)
     "CTGRY828",  # 박물관 (총독부박물관, 이왕가박물관)
@@ -73,6 +75,7 @@ SEOUL_PHOTO_CATEGORIES = [
     "CTGRY804",  # 전차/자동차
     "CTGRY805",  # 철도 (경성역, 기차, 한강철교)
     # 여가/관광/체육
+    "CTGRY830",  # 여가/관광/체육 (상위 카테고리 — 73건)
     "CTGRY831",  # 경성유람버스
     "CTGRY832",  # 극장
     "CTGRY833",  # 요릿집 (명월관, 식도원)
@@ -268,62 +271,95 @@ def get_category_for_keyword(query: str) -> str:
     return _SEOUL_DEFAULT_CATEGORY
 
 
+def _parse_seoul_archive_detail_html(
+    soup: BeautifulSoup, file_id: str, detail_url: str
+) -> dict | None:
+    """BeautifulSoup 객체에서 서울역사아카이브 상세 정보 추출"""
+    tbl = soup.select_one("div.view_table_info table")
+    if not tbl:
+        return None
+
+    meta: dict[str, str] = {}
+    for row in tbl.find_all("tr"):
+        th = row.find("th")
+        td = row.find("td")
+        if th and td:
+            key = th.get_text(strip=True)
+            val = td.get_text(" ", strip=True)
+            if key:
+                meta[key] = val
+
+    title = meta.get("명칭", file_id)
+    period = meta.get("시기", "")
+    place = meta.get("장소", "")
+    source = meta.get("자료출처", "서울역사아카이브")
+    content = meta.get("내용", "")
+    archive_no = meta.get("아카이브 번호", file_id)
+    artifact_no = meta.get("유물번호", "")
+
+    year = ""
+    m = re.search(r"(1[89]\d{2}|20[012]\d)", period)
+    if m:
+        year = m.group(1)
+
+    # 원본 이미지: ARCHIVE_DATA 경로 우선, 없으면 ND_originFile
+    original_url = ""
+    for img in soup.find_all("img"):
+        src = img.get("src", "")
+        if "ARCHIVE_DATA" in src:
+            original_url = src
+            break
+    if not original_url:
+        for img in soup.find_all("img"):
+            src = img.get("src", "")
+            if "ND_originFile" in src:
+                original_url = src
+                break
+
+    parts = [p for p in [title, period, place, content] if p]
+    text = " | ".join(parts)
+
+    return {
+        "file_id": file_id,
+        "title": title,
+        "year": year,
+        "period": period,
+        "place": place,
+        "content": content,
+        "archive_no": archive_no,
+        "artifact_no": artifact_no,
+        "original_url": original_url,
+        "thumbnail": f"/api/img/seoul?f={file_id}",
+        "description": content,
+        "source": source,
+        "text": text,
+        "meta": meta,
+        "url": detail_url,
+    }
+
+
+def _seoul_detail_url(ctgry_id: str, file_id: str) -> str:
+    return (
+        f"{_SEOUL_ARCHIVE_BASE}/archive/archiveNew/NR_archiveView.do"
+        f"?ctgryId={ctgry_id}&subCtgryId=&upperNodeId={ctgry_id}"
+        f"&type=D&fileSn=300&fileId={file_id}"
+    )
+
+
 async def scrape_seoul_archive_detail(file_id: str, ctgry_id: str) -> dict | None:
-    """서울역사아카이브 상세 페이지에서 고화질 사진 + 설명 텍스트 추출"""
-    url = f"https://museum.seoul.go.kr/archive/archiveNew/NR_archiveView.do?ctgryId={ctgry_id}&fileId={file_id}"
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; HistoryResearchBot/1.0)"}
+    """서울역사아카이브 상세 페이지에서 고화질 원본 이미지 + 메타데이터 추출"""
+    url = _seoul_detail_url(ctgry_id, file_id)
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
 
     async with httpx.AsyncClient(timeout=15, headers=headers, follow_redirects=True) as client:
         try:
             resp = await client.get(url)
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
-
-            # 메타데이터 파싱
-            meta = {}
-            for row in soup.select("table tr, dl dt, dl dd, div.info_list li"):
-                text = row.get_text(separator="|", strip=True)
-                parts = text.split("|")
-                if len(parts) >= 2:
-                    key = parts[0].strip()
-                    val = parts[1].strip()
-                    if key and val:
-                        meta[key] = val
-
-            # 설명 텍스트
-            desc = ""
-            for key in ["내용", "설명", "description"]:
-                if key in meta:
-                    desc = meta[key]
-                    break
-            if not desc:
-                desc_el = soup.select_one("div.cont_view p, div.view_cont p, td.cont")
-                if desc_el:
-                    desc = desc_el.get_text(strip=True)
-
-            # 연도 추출
-            year = ""
-            for key in ["시기", "제작연도", "연도", "date"]:
-                if key in meta:
-                    m = re.search(r"(\d{4})", meta[key])
-                    if m:
-                        year = m.group(1)
-                    break
-
-            title_el = soup.select_one("h2, h3, div.view_title, strong.tit")
-            title = title_el.get_text(strip=True) if title_el else file_id
-
-            return {
-                "file_id": file_id,
-                "title": title,
-                "year": year,
-                "original": f"/api/img/seoul?f={file_id}&sn=1000",
-                "thumbnail": f"/api/img/seoul?f={file_id}",
-                "description": desc,
-                "source": meta.get("자료출처", "서울역사아카이브"),
-                "meta": meta,
-                "url": url,
-            }
+            result = _parse_seoul_archive_detail_html(soup, file_id, url)
+            if result is None:
+                print(f"서울역사아카이브 상세 파싱 실패 ({file_id}): view_table_info 없음")
+            return result
         except Exception as e:
             print(f"서울역사아카이브 상세 수집 실패 ({file_id}): {e}")
             return None
@@ -392,12 +428,16 @@ async def scrape_seoul_history_photos(keyword: str, limit: int = 12) -> list[dic
                 "id": f"seoul_archive_{file_id}",
                 "title": detail["title"],
                 "year": detail["year"],
+                "period": detail["period"],
+                "place": detail["place"],
+                "archive_no": detail["archive_no"],
+                "artifact_no": detail["artifact_no"],
                 "thumbnail": detail["thumbnail"],
-                "original": detail["original"],
+                "original": detail["original_url"] or detail["thumbnail"],
                 "source": detail["source"],
                 "license": "공공누리 제1유형",
                 "url": detail["url"],
-                "description": detail["description"],
+                "description": detail["content"],
             })
         await asyncio.sleep(0.3)
 
@@ -443,36 +483,40 @@ async def crawl_seoul_archive_photos(on_progress=None) -> list[dict]:
                             continue
                         seen_ids.add(file_id)
 
-                        # 연도 추출: 주변 텍스트에서 4자리 숫자
-                        year = ""
-                        container = img
-                        for _ in range(6):
-                            container = container.parent
-                            if not container:
-                                break
-                            txt = container.get_text(separator=" ", strip=True)
-                            if len(txt) > 10:
-                                m = re.search(r"(1[89]\d{2}|20[01]\d)", txt)
-                                if m:
-                                    year = m.group(1)
-                                break
+                        detail_url = _seoul_detail_url(ctgry_id, file_id)
+                        try:
+                            detail_resp = await client.get(detail_url)
+                            detail_soup = BeautifulSoup(detail_resp.text, "html.parser")
+                            detail = _parse_seoul_archive_detail_html(detail_soup, file_id, detail_url)
+                        except Exception as de:
+                            print(f"서울역사아카이브 상세 수집 실패 ({file_id}): {de}")
+                            detail = None
 
-                        thumbnail = f"/api/img/seoul?f={file_id}"
-                        archive_url = f"{_SEOUL_ARCHIVE_BASE}/archive/archiveNew/NR_archiveView.do?ctgryId={ctgry_id}&fileId={file_id}"
-                        title = alt or file_id
-                        text = f"{title}" + (f" ({year}년)" if year else "")
+                        if detail:
+                            documents.append({
+                                "id": f"seoul_archive_{file_id}",
+                                "text": detail["text"],
+                                "source": "서울역사아카이브 근현대서울사진",
+                                "year": detail["year"],
+                                "url": detail_url,
+                                "image_url": detail["original_url"] or f"/api/img/seoul?f={file_id}",
+                                "category": "근현대서울사진",
+                            })
+                        else:
+                            title = alt or file_id
+                            documents.append({
+                                "id": f"seoul_archive_{file_id}",
+                                "text": title,
+                                "source": "서울역사아카이브 근현대서울사진",
+                                "year": "",
+                                "url": detail_url,
+                                "image_url": f"/api/img/seoul?f={file_id}",
+                                "category": "근현대서울사진",
+                            })
 
-                        documents.append({
-                            "id": f"seoul_archive_{file_id}",
-                            "text": text,
-                            "source": "서울역사아카이브 근현대서울사진",
-                            "year": year,
-                            "url": archive_url,
-                            "image_url": thumbnail,
-                            "category": "근현대서울사진",
-                        })
                         if on_progress:
                             on_progress(len(documents))
+                        await asyncio.sleep(0.3)
 
                     page += 1
                     await asyncio.sleep(0.4)
@@ -511,33 +555,59 @@ async def scrape_seoul_archive_listing(ctgry_id: str, page: int = 1, limit: int 
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
 
+            file_ids = []
             for img in soup.find_all("img", src=lambda s: s and "ND_thumbnail.tmb" in s):
                 src = img.get("src", "")
-                alt = img.get("alt", "")
-
                 file_id_match = re.search(r"fileId=([^&]+)", src)
-                if not file_id_match:
-                    continue
-                file_id = file_id_match.group(1)
-
-                thumbnail = f"/api/img/seoul?f={file_id}"
-                original = f"/api/img/seoul?f={file_id}&sn=1000"
-                archive_url = f"{_SEOUL_ARCHIVE_BASE}/archive/archiveNew/NR_archiveView.do?ctgryId={ctgry_id}&fileId={file_id}"
-
-                photos.append({
-                    "id": f"seoul_archive_{file_id}",
-                    "title": alt or file_id,
-                    "year": "",
-                    "thumbnail": thumbnail,
-                    "original": original,
-                    "source": "서울역사아카이브",
-                    "license": "서울특별시",
-                    "url": archive_url,
-                    "description": alt,
-                })
-
-                if len(photos) >= limit:
+                if file_id_match:
+                    file_ids.append((file_id_match.group(1), img.get("alt", "")))
+                if len(file_ids) >= limit:
                     break
+
+            for file_id, alt in file_ids:
+                detail_url = _seoul_detail_url(ctgry_id, file_id)
+                try:
+                    detail_resp = await client.get(detail_url)
+                    detail_soup = BeautifulSoup(detail_resp.text, "html.parser")
+                    detail = _parse_seoul_archive_detail_html(detail_soup, file_id, detail_url)
+                except Exception as de:
+                    print(f"서울역사아카이브 상세 수집 실패 ({file_id}): {de}")
+                    detail = None
+
+                if detail:
+                    photos.append({
+                        "id": f"seoul_archive_{file_id}",
+                        "title": detail["title"],
+                        "year": detail["year"],
+                        "period": detail["period"],
+                        "place": detail["place"],
+                        "archive_no": detail["archive_no"],
+                        "artifact_no": detail["artifact_no"],
+                        "thumbnail": detail["thumbnail"],
+                        "original": detail["original_url"] or f"/api/img/seoul?f={file_id}",
+                        "source": detail["source"],
+                        "license": "서울특별시",
+                        "url": detail_url,
+                        "description": detail["content"],
+                    })
+                else:
+                    photos.append({
+                        "id": f"seoul_archive_{file_id}",
+                        "title": alt or file_id,
+                        "year": "",
+                        "period": "",
+                        "place": "",
+                        "archive_no": file_id,
+                        "artifact_no": "",
+                        "thumbnail": f"/api/img/seoul?f={file_id}",
+                        "original": f"/api/img/seoul?f={file_id}",
+                        "source": "서울역사아카이브",
+                        "license": "서울특별시",
+                        "url": detail_url,
+                        "description": alt,
+                    })
+
+                await asyncio.sleep(0.3)
 
         except Exception as e:
             print(f"서울역사아카이브 목록 수집 실패 ({ctgry_id}): {e}")
@@ -594,12 +664,12 @@ def _extract_doc_content(soup: BeautifulSoup, url: str, item_id: str, level_id: 
         "pro": "소요사건 도장관 보고",
         "jssy": "조선소요사건 관계서류",
         "kd": "고등경찰 관계 연표",
-    }.get(item_id, "한국근현대사료DB")
+    }.get(item_id) or HISTORY_DB_ITEMS.get(item_id, (item_id,))[0]
 
     return {
         "id": f"history_db_{level_id}",
         "title": title,
-        "text": body_text[:4000],
+        "text": f"[{source_name}] {body_text}"[:4000],
         "source": source_name,
         "year": year,
         "url": url,

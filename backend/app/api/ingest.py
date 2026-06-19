@@ -370,6 +370,32 @@ async def _do_ingest_nl_newspaper_bulk(job_id: str):
         _fail_job(job_id, str(e))
 
 
+# ── 서울역사아카이브 근현대서울사진 ────────────────────────────────────
+
+@router.post("/fetch-seoul-archive")
+async def ingest_seoul_archive(background_tasks: BackgroundTasks):
+    """서울역사아카이브 근현대서울사진 전체 카테고리 수집"""
+    from app.services.scraper import SEOUL_PHOTO_CATEGORIES
+    job_id = _new_job(f"서울역사아카이브 근현대서울사진 ({len(SEOUL_PHOTO_CATEGORIES)}개 카테고리)", 0)
+    background_tasks.add_task(_do_ingest_seoul_archive, job_id)
+    return {"message": f"서울역사아카이브 수집을 시작합니다. {len(SEOUL_PHOTO_CATEGORIES)}개 카테고리.", "job_id": job_id}
+
+
+async def _do_ingest_seoul_archive(job_id: str):
+    def on_progress(n): _jobs[job_id]["collected"] = n
+    try:
+        _jobs[job_id]["phase"] = "크롤링 중"
+        docs = await crawl_seoul_archive_photos(on_progress=on_progress)
+        _jobs[job_id]["collected"] = len(docs)
+        if docs:
+            _jobs[job_id]["phase"] = "DB 저장 중"
+            _finish_job(job_id, await ingest_documents(docs))
+        else:
+            _finish_job(job_id, 0)
+    except Exception as e:
+        _fail_job(job_id, str(e))
+
+
 # ── 위키문헌 근대문학 ────────────────────────────────────────────────
 
 @router.post("/fetch-literature")
