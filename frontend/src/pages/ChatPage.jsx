@@ -38,6 +38,76 @@ function AiAvatar() {
   )
 }
 
+/* ─── [ref:N] → Markdown 링크 전처리 ─── */
+function preprocessCitations(text) {
+  return text.replace(/\[ref:\s*(\d+)\]/g, '[[ref:$1]](ref:$1)')
+}
+
+/* ─── 인용 뱃지 ─── */
+function CitationBadge({ source }) {
+  const [hovered, setHovered] = useState(false)
+  const labelRaw = source.title || ''
+  const label = labelRaw.length > 16 ? labelRaw.slice(0, 16) + '…' : labelRaw
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-block', margin: '0 2px', verticalAlign: 'middle' }}>
+      <span
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onClick={() => source.url && window.open(source.url, '_blank', 'noreferrer')}
+        style={{
+          display: 'inline-block',
+          background: '#f9e0e8',
+          color: '#c94470',
+          borderRadius: 999,
+          fontSize: 11,
+          fontWeight: 600,
+          padding: '2px 8px',
+          cursor: source.url ? 'pointer' : 'default',
+          lineHeight: 1.5,
+          border: '1px solid #f0c4d4',
+          whiteSpace: 'nowrap',
+          userSelect: 'none',
+        }}
+      >
+        {label}
+      </span>
+      {hovered && (
+        <div style={{
+          position: 'absolute',
+          bottom: 'calc(100% + 8px)',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: '#28181e',
+          color: '#f0e2ea',
+          borderRadius: 10,
+          padding: '10px 14px',
+          fontSize: 12,
+          lineHeight: 1.6,
+          width: 240,
+          boxShadow: '0 6px 24px rgba(0,0,0,.32)',
+          zIndex: 1000,
+          pointerEvents: 'none',
+        }}>
+          <div style={{ fontWeight: 700, color: '#f4a8c4', marginBottom: 2 }}>{source.title}</div>
+          {source.year && <div style={{ color: '#b09cb0', fontSize: 11 }}>{source.year}년</div>}
+          {source.excerpt && (
+            <div style={{ color: '#b8a8b8', marginTop: 6, fontSize: 11, lineHeight: 1.5 }}>
+              {source.excerpt.length > 90 ? source.excerpt.slice(0, 90) + '…' : source.excerpt}
+            </div>
+          )}
+          <div style={{
+            position: 'absolute', bottom: -5, left: '50%', transform: 'translateX(-50%)',
+            width: 0, height: 0,
+            borderLeft: '6px solid transparent', borderRight: '6px solid transparent',
+            borderTop: '6px solid #28181e',
+          }} />
+        </div>
+      )}
+    </span>
+  )
+}
+
 /* ─── 신뢰도 범례 ─── */
 function TrustLegend() {
   return (
@@ -222,93 +292,6 @@ function PhotoGrid({ photos }) {
   )
 }
 
-/* ─── 출처 탭 패널 ─── */
-function SourcesPanel({ sources, sourcesNews }) {
-  const hasSrc = sources?.length > 0
-  const hasNews = sourcesNews?.length > 0
-  const [open, setOpen] = useState(false)
-  const [tab, setTab] = useState(hasSrc ? '사료' : '신문')
-  if (!hasSrc && !hasNews) return null
-
-  const tabs = [
-    hasSrc && { key: '사료', count: sources.length },
-    hasNews && { key: '신문', count: sourcesNews.length },
-  ].filter(Boolean)
-  const activeTab = tabs.some(t => t.key === tab) ? tab : tabs[0]?.key
-
-  return (
-    <div style={{ marginTop: 16, paddingTop: 13, borderTop: '1px solid #F2E6E3' }}>
-      <div onClick={() => setOpen(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-        <span style={{ fontSize: 12, color: '#9a8b8e', fontWeight: 600 }}>
-          참고 자료 {(sources?.length || 0) + (sourcesNews?.length || 0)}건
-        </span>
-        <span style={{ fontSize: 11, color: '#C2B4B7' }}>{open ? '▴' : '▾'}</span>
-      </div>
-
-      {open && (
-        <div style={{ marginTop: 8 }}>
-          {tabs.length > 1 && (
-            <div style={{ display: 'flex', borderBottom: '1px solid #F0E3E0', marginBottom: 10 }}>
-              {tabs.map(({ key, count }) => (
-                <button key={key} onClick={() => setTab(key)} style={{
-                  background: 'none', border: 'none',
-                  borderBottom: activeTab === key ? '2px solid #C16A82' : '2px solid transparent',
-                  color: activeTab === key ? '#C16A82' : '#B6A8AB',
-                  cursor: 'pointer', padding: '5px 12px', marginBottom: '-1px',
-                  fontSize: '0.78rem', fontWeight: activeTab === key ? 700 : 400,
-                  fontFamily: 'inherit', transition: 'all 0.15s',
-                }}>
-                  {key} <span style={{ opacity: 0.65 }}>{count}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {activeTab === '사료' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {sources.map((s, i) => (
-                <div key={i} style={{ background: '#FFF8FA', border: '1px solid #F4DCE8', borderRadius: 8, padding: '8px 12px', fontSize: '0.77rem' }}>
-                  <span style={{ color: '#C16A82', fontWeight: 600 }}>{s.title}</span>
-                  {s.year && <span style={{ color: '#B6A8AB' }}> ({s.year})</span>}
-                  <div style={{ color: '#9a8b8e', marginTop: 4, lineHeight: 1.5 }}>{s.excerpt}</div>
-                  {s.url && (
-                    <a href={s.url} target="_blank" rel="noreferrer" style={{ color: '#a060c8', fontSize: '0.72rem', display: 'block', marginTop: 4 }}>
-                      원문 보기 →
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {activeTab === '신문' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {sourcesNews.map((s, i) => {
-                const articleTitle = s.excerpt?.includes(' — ')
-                  ? s.excerpt.split(' — ').slice(1).join(' — ')
-                  : s.excerpt
-                return (
-                  <div key={i} style={{ background: '#FFF8FA', border: '1px solid #F4DCE8', borderRadius: 8, padding: '8px 12px', fontSize: '0.77rem' }}>
-                    {articleTitle && <div style={{ color: '#C16A82', fontWeight: 600, marginBottom: 3 }}>{articleTitle}</div>}
-                    <div style={{ color: '#B6A8AB', fontSize: '0.72rem' }}>
-                      {s.title}{s.year ? ` · ${s.year}년` : ''}
-                    </div>
-                    {s.url && (
-                      <a href={s.url} target="_blank" rel="noreferrer" style={{ color: '#a060c8', fontSize: '0.72rem', display: 'block', marginTop: 4 }}>
-                        원문 보기 →
-                      </a>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
 /* ─── 유저 말풍선 ─── */
 function UserBubble({ content }) {
   return (
@@ -328,7 +311,9 @@ function UserBubble({ content }) {
 }
 
 /* ─── AI 말풍선 ─── */
-function AiBubble({ content, photos, sources, sourcesNews, coords, showMap, query }) {
+function AiBubble({ content, photos, sources, coords, showMap, query }) {
+  const processedContent = preprocessCitations(content)
+
   return (
     <div style={{ display: 'flex', gap: 13, alignItems: 'flex-start' }}>
       <AiAvatar />
@@ -339,6 +324,7 @@ function AiBubble({ content, photos, sources, sourcesNews, coords, showMap, quer
         borderRadius: '8px 22px 22px 22px',
         padding: '24px 26px',
         boxShadow: '0 4px 18px rgba(150,110,115,.07)',
+        overflow: 'visible',
       }}>
         <TrustLegend />
 
@@ -366,8 +352,16 @@ function AiBubble({ content, photos, sources, sourcesNews, coords, showMap, quer
                 mask: 'linear-gradient(90deg,transparent,#000 20%,#000 80%,transparent)',
               }} />
             ),
+            a: ({ href, children }) => {
+              if (href?.startsWith('ref:')) {
+                const n = parseInt(href.slice(4), 10) - 1
+                const src = sources?.[n]
+                return src ? <CitationBadge source={src} /> : null
+              }
+              return <a href={href} target="_blank" rel="noreferrer" style={{ color: '#a060c8' }}>{children}</a>
+            },
           }}>
-            {content}
+            {processedContent}
           </ReactMarkdown>
         </div>
 
@@ -378,8 +372,6 @@ function AiBubble({ content, photos, sources, sourcesNews, coords, showMap, quer
             <HistoricalMap lat={coords.lat} lng={coords.lng} label={query} />
           </Suspense>
         )}
-
-        <SourcesPanel sources={sources} sourcesNews={sourcesNews} />
       </div>
     </div>
   )
@@ -579,7 +571,7 @@ export default function ChatPage() {
               {messages.map((msg, i) =>
                 msg.role === 'user'
                   ? <UserBubble key={i} content={msg.content} />
-                  : <AiBubble key={i} content={msg.content} photos={msg.photos} sources={msg.sources} sourcesNews={msg.sourcesNews || []} coords={msg.coords} showMap={msg.showMap} query={msg.query} />
+                  : <AiBubble key={i} content={msg.content} photos={msg.photos} sources={msg.sources} coords={msg.coords} showMap={msg.showMap} query={msg.query} />
               )}
               {loading && <LoadingBubble />}
             </div>
