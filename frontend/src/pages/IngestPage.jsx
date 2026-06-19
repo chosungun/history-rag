@@ -119,7 +119,7 @@ export default function IngestPage() {
   }
 
   const fetchLiterature = async () => {
-    if (!window.confirm('위키문헌 근대문학을 수집합니다.\n소설 32편 + 시 34편 (총 66작품)\n약 2~3분 소요됩니다.\n시작하시겠습니까?')) return
+    if (!window.confirm('위키문헌 근대문학을 수집합니다.\n소설 34편 + 시 39편 (총 73작품)\n약 3~4분 소요됩니다.\n시작하시겠습니까?')) return
     try {
       const res = await fetch('/api/ingest/fetch-literature', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       const data = await res.json()
@@ -206,7 +206,7 @@ export default function IngestPage() {
             근대문학 수집
           </button>
           <span style={{ color: '#8a7080', fontSize: '0.75rem' }}>
-            위키문헌 — 소설 32편 + 시 34편 · 약 2~3분 소요
+            위키문헌 — 소설 34편 + 시 39편 · 약 3~4분 소요
           </span>
         </div>
 

@@ -20,6 +20,8 @@ NOVELS = [
     ("박태원", "천변풍경", "https://ko.wikisource.org/wiki/%EC%B2%9C%EB%B3%80%ED%92%8D%EA%B2%BD", "1936"),
     ("이상", "날개", "https://ko.wikisource.org/wiki/%EB%82%A0%EA%B0%9C", "1936"),
     ("이상", "봉별기", "https://ko.wikisource.org/wiki/%EB%B4%89%EB%B3%84%EA%B8%B0", "1936"),
+    ("이상", "지주회시", "https://ko.wikisource.org/wiki/%EC%A7%80%EC%A3%BC%ED%9A%8C%EC%8B%9C", "1936"),
+    ("이상", "동해", "https://ko.wikisource.org/wiki/%EB%8F%99%ED%95%B4", "1937"),
     ("채만식", "태평천하", "https://ko.wikisource.org/wiki/%ED%83%9C%ED%8F%89%EC%B2%9C%ED%95%98", "1938"),
     ("채만식", "레디메이드 인생", "https://ko.wikisource.org/wiki/%EB%A0%88%EB%94%94%EB%A9%94%EC%9D%B4%EB%93%9C_%EC%9D%B8%EC%83%9D", "1934"),
     ("채만식", "치숙", "https://ko.wikisource.org/wiki/%EC%B9%98%EC%88%99", "1938"),
@@ -76,6 +78,10 @@ POEMS = [
     ("장만영", "달·포도·잎사귀", "https://ko.wikisource.org/wiki/%EB%8B%AC%C2%B7%ED%8F%AC%EB%8F%84%C2%B7%EC%9E%8E%EC%82%AC%EA%B7%80", "1938"),
     ("신석정", "그 먼 나라를 알으십니까", "https://ko.wikisource.org/wiki/%EA%B7%B8_%EB%A8%BC_%EB%82%98%EB%9D%BC%EB%A5%BC_%EC%95%8C%EC%9C%BC%EC%8B%AD%EB%8B%88%EA%B9%8C", "1933"),
     ("이장희", "봄은 고양이로다", "https://ko.wikisource.org/wiki/%EB%B4%84%EC%9D%80_%EA%B3%A0%EC%96%91%EC%9D%B4%EB%A1%9C%EB%8B%A4", "1924"),
+    ("이상", "오감도", "https://ko.wikisource.org/wiki/%EC%98%A4%EA%B0%90%EB%8F%84", "1934"),
+    ("이상", "가외가전", "https://ko.wikisource.org/wiki/%EA%B0%80%EC%99%B8%EA%B0%80%EC%A0%84", "1936"),
+    ("이상", "거울", "https://ko.wikisource.org/wiki/%EA%B1%B0%EC%9A%B8", "1933"),
+    ("이상", "이런 시", "https://ko.wikisource.org/wiki/%EC%9D%B4%EB%9F%B0_%EC%8B%9C", "1933"),
 ]
 
 LITERATURE_LIST = NOVELS + POEMS
